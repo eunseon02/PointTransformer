@@ -13,7 +13,6 @@ blue : GT
 <div style="text-align: center;">
     <img src="https://github.com/user-attachments/assets/2e1ceb61-bdd4-4886-8eac-cb7ce9da0ffa" alt="image" width="500"/>
 </div>
-![image](https://github.com/user-attachments/assets/2e1ceb61-bdd4-4886-8eac-cb7ce9da0ffa)
 
 ## train
 ```bash
