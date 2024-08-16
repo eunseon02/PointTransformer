@@ -1,5 +1,6 @@
 # PointTransformer
-![image](https://github.com/user-attachments/assets/11f833a2-f94a-492e-9b06-311fa7c676e3)
+
+![image](https://github.com/user-attachments/assets/8fcee861-464b-4ad2-b836-5da43d7fee6e)
 
 red : prediction \
 blue : GT
