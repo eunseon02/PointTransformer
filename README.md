@@ -9,5 +9,5 @@ blue : GT
 
 ## train
 ```bash
-docker pull ghcr.io/eunseon02/droid-slam:latest
+python train_one.py
 ```
