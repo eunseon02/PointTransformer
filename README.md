@@ -2,11 +2,11 @@
 
 
 ### Result
-<img src="https://github.com/user-attachments/assets/8fcee861-464b-4ad2-b836-5da43d7fee6e.png", width="200", height="400"/>
+<img src="https://github.com/user-attachments/assets/c0a76884-a6b6-4212-b5cf-aeca6b16022b" alt="image" width="500"/>
 
 red : prediction \
 blue : GT
-![image](https://github.com/user-attachments/assets/dc138420-9fe0-40a1-b383-05e2b004b7d8)
+<img src="https://github.com/user-attachments/assets/dc138420-9fe0-40a1-b383-05e2b004b7d8" alt="image" width="500"/>
 
 
 ## train
