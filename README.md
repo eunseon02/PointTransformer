@@ -11,8 +11,9 @@ red : prediction \
 blue : GT
 
 <div style="text-align: center;">
-    <img src="https://github.com/user-attachments/assets/dc138420-9fe0-40a1-b383-05e2b004b7d8" alt="image" width="500"/>
+    <img src="https://github.com/user-attachments/assets/2e1ceb61-bdd4-4886-8eac-cb7ce9da0ffa" alt="image" width="500"/>
 </div>
+![image](https://github.com/user-attachments/assets/2e1ceb61-bdd4-4886-8eac-cb7ce9da0ffa)
 
 ## train
 ```bash
