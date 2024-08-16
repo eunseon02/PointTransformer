@@ -18,3 +18,8 @@ blue : GT
 ```bash
 python train_one.py
 ```
+
+
+
+ref
+[PointTransformerV3](https://github.com/Pointcept/PointTransformerV3)
