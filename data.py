@@ -106,7 +106,7 @@ class PointCloudDataset(Dataset):
     def read_csv(self, file_path, csv_file_path):
         # print(f"reading {csv_file_path}")
         df = pd.read_csv(csv_file_path)
-        file_path = file_path.replace("../../env/envs/rsg_raibo_rough_terrain/", '')
+        file_path = file_path.replace("dataset/", '')
 
         df['delta_quat_w'] = df['delta_quat_w'].apply(self.convert_to_float)
         df['delta_quat_x'] = df['delta_quat_x'].apply(self.convert_to_float)
@@ -119,7 +119,7 @@ class PointCloudDataset(Dataset):
         row = df[df['filename'] == file_path]
 
         if row.empty:
-            # print(f"No data found for file name: {file_path}")
+            print(f"No data found for file name: {file_path}")
             return np.zeros(3, dtype=np.float32), np.array([1, 0, 0, 0], dtype=np.float32)
         else:
             # print(row)
@@ -131,5 +131,4 @@ class PointCloudDataset(Dataset):
             if delta_quat.shape[0] != 4:
                 delta_quat = np.array([1, 0, 0, 0], dtype=np.float32)
             return delta_pos, delta_quat
-
 

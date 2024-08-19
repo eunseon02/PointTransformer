@@ -12,7 +12,7 @@ import open3d as o3d
 import os
 import time
 import argparse
-from raisimGymTorch.algo.PointTransFormer.feature_model import PointTransformerV3ForGlobalFeature
+from feature_model import PointTransformerV3ForGlobalFeature
 from torch.utils.data import Dataset, DataLoader
 
 def show_point_clouds(ply_file_1, ply_file_2):
@@ -57,9 +57,9 @@ def load_model(model_path):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model', type=str, default='weight/model_epoch_best_99.pth', metavar='N',
+    parser.add_argument('--model', type=str, default='weight/model_epoch_best_139.pth', metavar='N',
                         help='Path to load model')
-    parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1907.ply", metavar='N',
+    parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1007.ply", metavar='N',
                         help='Path to load data')
     args = parser.parse_args()
     return args
@@ -86,35 +86,44 @@ def tensor_to_ply(points_tensor, file_path= 'output.ply'):
 if __name__ == "__main__":
     args = get_parser()
     points = read_ply(args.data)
-    print(points.shape)
+    val_path = 'dataset/valid'
+    val_dataset = PointCloudDataset(val_path)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, num_workers=8, pin_memory=True)
 
-    model = PointTransformerV3ForGlobalFeature(1).to(device)
-    checkpoint = torch.load(args.model)
-    state_dict = checkpoint['model_state_dict']
-    new_state_dict = {}
+    for iter, batch  in enumerate(val_loader):
 
-    for key, value in state_dict.items():
-        new_key = key.replace("module.", "")  
-        new_state_dict[new_key] = value
+        points, gt_pts, lidar_pos, lidar_quat = batch
 
-    model.load_state_dict(new_state_dict)
-    
-    model.eval()
-    points = points.view(-1, 3)
-    pts = torch.nan_to_num(points, nan=0.0)
-    data_dict = {
-        'feat': pts.to(device),
-        'coord': pts.to(device),
-        'grid_size': torch.tensor([0.1]).to(device),
-        'offset': torch.arange(0, pts.size(0) + 1, 2048, device=device)
-    }
+        model = PointTransformerV3ForGlobalFeature(1).to(device)
+        checkpoint = torch.load(args.model)
+        state_dict = checkpoint['model_state_dict']
+        new_state_dict = {}
+
+        for key, value in state_dict.items():
+            new_key = key.replace("module.", "")  
+            new_state_dict[new_key] = value
+
+        model.load_state_dict(new_state_dict)
+        
+        model.eval()
+        points = points.view(-1, 3)
+        pts = torch.nan_to_num(points, nan=0.0)
+        print("pts shape", pts.shape)
+
+        data_dict = {
+            'feat': pts.to(device),
+            'coord': pts.to(device),
+            'grid_size': torch.tensor([0.1]).to(device),
+            'offset': torch.arange(0, pts.size(0) + 1, 2048, device=device)
+        }
 
 
-    with torch.no_grad():
-        output = model(data_dict)
+        with torch.no_grad():
+            output = model(data_dict)
 
-    tensor_to_ply(output)
-    print("out", output.shape)
-    
-    show_point_clouds('output.ply', args.data)
-    
+        tensor_to_ply(output, 'output.ply')
+        tensor_to_ply(gt_pts.squeeze(0), 'gts.ply')
+        tensor_to_ply(points.squeeze(0), 'points.ply')
+        
+        show_point_clouds('output.ply', 'gts.ply')
+        

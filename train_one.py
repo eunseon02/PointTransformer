@@ -15,7 +15,7 @@ import time
 import argparse
 import open3d as o3d
 
-from raisimGymTorch.algo.PointTransFormer.feature_model import PointTransformerV3ForGlobalFeature
+from feature_model import PointTransformerV3ForGlobalFeature
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -32,6 +32,7 @@ import logging
 from collections import OrderedDict
 
 def tensor_to_ply(tensor, filename):
+    print("tensor", tensor.shape)
     points = tensor.cpu().numpy()
     points = points.astype(np.float64)
     points=  points.squeeze(0)
@@ -69,9 +70,9 @@ def profileit(func):
     return wrapper
 class Train():
     def __init__(self, args):
-        self.epochs = 200
+        self.epochs = 500
         self.snapshot_interval = 10
-        self.batch_size = 1
+        self.batch_size = 32
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.model = PointTransformerV3ForGlobalFeature(self.batch_size).to(self.device)
         self.model_path = args.model_path
@@ -92,8 +93,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.0001*16/self.batch_size, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "except_loss"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
+        self.weight_folder = "weight2"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
 
         torch.cuda.empty_cache()
         torch.backends.cudnn.benchmark = True
@@ -123,37 +124,26 @@ class Train():
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
             # gc.collect()
             torch.cuda.empty_cache()
-            self._snapshot(epoch + 1)
+            # self._snapshot(epoch + 1)
             # gc.collect()
             torch.cuda.empty_cache()
-            if self.rank == 0:
-                # save snapeshot
-                if (epoch + 1) % self.snapshot_interval == 0:
-                    self._snapshot(epoch + 1)
-                    if train_loss < best_loss:
-                        best_loss = train_loss
-                        self._snapshot('best_{}'.format(epoch))
-                log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
-                self.log(log_message)
-        if self.rank == 0:
-            # finish all epoch
-            self._snapshot(epoch + 1)
-            if train_loss < best_loss:
-                best_loss = train_loss
-                self._snapshot('best')
-            self.train_hist['total_time'].append(time.time() - start_time)
-            print("Avg one epoch time: %.2f, total %d epochs time: %.2f" % (np.mean(self.train_hist['per_epoch_time']),
-                                                                            self.epochs, self.train_hist['total_time'][0]))
-            print("Training finish!... save training results")
-
-    def preprocess(self, coord):
-        coord_no_nan = coord.masked_fill(torch.isnan(coord), float('inf'))
-        grid_coord = torch.div(
-            coord - coord_no_nan.min(0)[0], torch.tensor([0.05]).to(coord.device), rounding_mode="trunc"
-        ).int()
-        del coord, coord_no_nan
-        torch.cuda.empty_cache()
-        return grid_coord
+            # save snapeshot
+            if (epoch + 1) % self.snapshot_interval == 0:
+                self._snapshot(epoch + 1)
+                if train_loss < best_loss:
+                    best_loss = train_loss
+                    self._snapshot('best_{}'.format(epoch))
+            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
+            self.log(log_message)
+        # finish all epoch
+        self._snapshot(epoch + 1)
+        if train_loss < best_loss:
+            best_loss = train_loss
+            self._snapshot('best')
+        self.train_hist['total_time'].append(time.time() - start_time)
+        print("Avg one epoch time: %.2f, total %d epochs time: %.2f" % (np.mean(self.train_hist['per_epoch_time']),
+                                                                        self.epochs, self.train_hist['total_time'][0]))
+        print("Training finish!... save training results")
         
 
     def transform_point_cloud(self, point_cloud, pos, quat):
@@ -180,8 +170,6 @@ class Train():
         return transformed_pc
 
     def max_pool_with_offset(self, features, offset):
-        print(features)
-        print(offset)
         global_features = []
         for i in range(len(offset) - 1):
             start = offset[i]
@@ -208,32 +196,31 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat = batch
-                # if gt_pts.shape[0] != self.batch_size:
-                #     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
-                #     pbar.update(1)
-                #     continue
+                # tensor_to_ply(pts, f"pts_{iter}.ply")
+                # tensor_to_ply(gt_pts, f"gt_{iter}.ply")
+
+                if gt_pts.shape[0] != self.batch_size:
+                    print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
+                    pbar.update(1)
+                    continue
                 pts = pts.to(self.device)
                 gt_pts = gt_pts.to(self.device)
-                print("gt_pts", gt_pts)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
-                tensor_to_ply(pts, 'pts.ply')
-                tensor_to_ply(gt_pts, 'gt_pts.ply')
-                # print(f"pts-before cat : ", pts[:5])
                 
-                # # concat
-                # if prev_preds is not None:
-                #     prev_preds = [torch.as_tensor(p) for p in prev_preds]
-                #     print(f"prev_preds-before cat : ", prev_preds[:5])
-                #     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
-                #     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                #     print(f"prev_preds-before cat : ", prev_preds[:5])
-                #     # pts = cat_pts
-                #     del prev_preds_tensor
-                #     # gc.collect()
-                #     torch.cuda.empty_cache()
-                # else:
-                #     pts = pts.repeat_interleave(2, dim=0)
+                # concat
+                if prev_preds is not None:
+                    prev_preds = [torch.as_tensor(p) for p in prev_preds]
+                    # print(f"prev_preds-before cat : ", prev_preds[:5])
+                    prev_preds_tensor = torch.stack(prev_preds).to(self.device)
+                    pts = torch.cat((prev_preds_tensor, pts), dim=1)
+                    # print(f"prev_preds-before cat : ", prev_preds[:5])
+                    # pts = cat_pts
+                    del prev_preds_tensor
+                    # gc.collect()
+                    torch.cuda.empty_cache()
+                else:
+                    pts = pts.repeat_interleave(2, dim=0)
 
                 pts = pts.view(-1, 3)
                 pts = torch.nan_to_num(pts, nan=0.0)
@@ -250,7 +237,6 @@ class Train():
                 # backward
                 # with torch.autograd.detect_anomaly():
                 preds = self.model(data_dict)
-                preds = self.max_pool_with_offset(preds, torch.arange(0, preds.size(0) + 1, 2048, device=pts.device))
                 preds = preds.view(self.batch_size, -1, 3)
                 
                 # loss
@@ -259,16 +245,30 @@ class Train():
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
-                # # transform
-                # transformed_preds = []
-                # if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                #     for i in range(min(self.batch_size, preds.size(0))):
-                #         transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                #         transformed_preds.append(transformed_pred.tolist())   
+                # transform
+                transformed_preds = []
+                if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
+                    for i in range(min(self.batch_size, preds.size(0))):
+                        transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                        transformed_preds.append(transformed_pred.tolist())   
                         
+                        del transformed_pred
+                        # gc.collect()
+                        torch.cuda.empty_cache()
+                        
+                # # for debugging
+                # pts = pts.view(self.batch_size, -1, 3)
+                # if not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
+                #     for i in range(min(self.batch_size, pts.size(0))):
+                #         transformed_pred = self.transform_point_cloud(pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                #         transformed_preds.append(transformed_pred.tolist())   
+                #         # tensor_to_ply(transformed_preds, f"transformed_{iter}")
                 #         del transformed_pred
                 #         # gc.collect()
                 #         torch.cuda.empty_cache()
+                # transformed_preds = torch.tensor(transformed_preds).to(self.device)  
+                # tensor_to_ply(transformed_preds, f"transformed_{iter}.ply")
+
                                 
                 # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, data_dict
@@ -317,16 +317,16 @@ class Train():
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
                     
-                    # # concat
-                    # if prev_preds is not None:
-                    #     prev_preds = [torch.as_tensor(p) for p in prev_preds]
-                    #     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
-                    #     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                    #     del prev_preds_tensor
-                    #     # gc.collect()
-                    #     torch.cuda.empty_cache()
-                    # else:
-                    #     pts = pts.repeat_interleave(2, dim=0)
+                    # concat
+                    if prev_preds is not None:
+                        prev_preds = [torch.as_tensor(p) for p in prev_preds]
+                        prev_preds_tensor = torch.stack(prev_preds).to(self.device)
+                        pts = torch.cat((prev_preds_tensor, pts), dim=1)
+                        del prev_preds_tensor
+                        # gc.collect()
+                        torch.cuda.empty_cache()
+                    else:
+                        pts = pts.repeat_interleave(2, dim=0)
 
                     pts = pts.view(-1, 3)
                     pts = torch.nan_to_num(pts, nan=0.0)
@@ -338,21 +338,20 @@ class Train():
                     }
 
                     preds = self.model(data_dict)
-                    preds = self.max_pool_with_offset(preds, torch.arange(0, preds.size(0) +1, 2048, device=pts.device))
                     preds = preds.view(self.batch_size, -1, 3)
                     loss = self.criterion(preds, gt_pts)
                     
-                    # # transform
-                    # transformed_preds = []
-                    # if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                    #     for i in range(min(self.batch_size, preds.size(0))):
-                    #         transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                    #         transformed_preds.append(transformed_pred.tolist())
-                    #         del transformed_pred
-                    #         # gc.collect()
-                    #         torch.cuda.empty_cache()
+                    # transform
+                    transformed_preds = []
+                    if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
+                        for i in range(min(self.batch_size, preds.size(0))):
+                            transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                            transformed_preds.append(transformed_pred.tolist())
+                            del transformed_pred
+                            # gc.collect()
+                            torch.cuda.empty_cache()
 
-                    # loss_buf.append(loss.item())
+                    loss_buf.append(loss.item())
                     
                     # empty memory
                     del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, data_dict

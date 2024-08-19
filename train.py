@@ -67,7 +67,7 @@ class Train():
         print(rank, world_size)
         dist.init_process_group("nccl", rank=rank, world_size=world_size)
         torch.cuda.set_device(rank)
-        self.epochs = 500
+        self.epochs = 300
         self.snapshot_interval = 10
         self.batch_size = 32
         # self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -93,7 +93,9 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().cuda(rank)
         self.optimizer = optim.Adam(self.parameter, lr=0.0001*16/self.batch_size, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "we" 
+        self.weight_folder = "weight2" 
+        if not os.path.exists(self.weight_folder):
+            os.makedirs(self.weight_folder)
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
 
         torch.cuda.empty_cache()
@@ -116,7 +118,7 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 200
+        start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             # gc.collect()
@@ -303,6 +305,7 @@ class Train():
                         continue
 
                     pts, gt_pts, lidar_pos, lidar_quat = batch
+                    tensor_to_ply(pts, )
                     if gt_pts.shape[0] != self.batch_size or pts.shape[1] != 2048:
                         # print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                         pbar.update(1)

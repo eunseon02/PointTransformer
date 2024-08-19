@@ -4,6 +4,11 @@ import torch.nn.functional as F
 from config import config as cfg
 import numpy as np
 from chamfer_distance import ChamferDistance as chamfer_dist
+# import open3d as o3d
+import logging
+
+logging.basicConfig(filename='loss_log.txt', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def get_voxel_coordinates(metadata):
@@ -104,60 +109,87 @@ class NSLoss(nn.Module):
 
     def voxelize(self, coord):
         coord_no_nan = coord.masked_fill(torch.isnan(coord), float('inf'))
-        grid_coord = torch.div(
-            coord - coord_no_nan.min(0)[0], torch.tensor([0.05]).to(coord.device), rounding_mode="trunc"
-        ).int()
-        grid_size = (grid_coord.max(0)[0] - grid_coord.min(0)[0] + 1).cpu().numpy()
-        
-        return grid_coord, grid_size
+        global_min = coord_no_nan.min(dim=1, keepdim=True)[0]
+        grid_coord = (coord - global_min) / 0.1
+        return grid_coord.int()
     
-        
-    def calculate_occupancy(self, voxel_coords, grid_size):
-        
-        grid_size = np.array(grid_size)  # Ensure grid_size is a numpy array
-        if isinstance(voxel_coords, torch.Tensor):
-            voxel_coords = voxel_coords.cpu().numpy()        # Initialize the occupancy grid
-        occupancy_grid = np.zeros(grid_size, dtype=np.int32)
-        # Ensure voxel_coords are within bounds
-        # voxel_coords = voxel_coords.cpu().numpy()
-        voxel_coords = np.clip(voxel_coords, 0, np.array(grid_size) - 1)
 
-        # Update the occupancy grid
-        occupancy_grid[tuple(voxel_coords.T)] = 1
+        
 
+    def calculate_occupancy(self, voxel_coords):
+        grid_size = (int(25.0 / 0.1), int(25.0 / 0.1), int(25.0 / 0.1))
+        batch_size = voxel_coords.size(0)
+        
+        occupancy_grid = torch.zeros((batch_size, *grid_size), dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
+        x_coords, y_coords, z_coords = voxel_coords.unbind(-1)
+        x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
+        y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
+        z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
+
+        indices = ((x_coords * grid_size[1] * grid_size[2]) + (y_coords * grid_size[2]) + z_coords).long()
+        unique_indices, counts = indices[0].unique(return_counts=True)
+        duplicates = unique_indices[counts > 1]
+        # if len(duplicates) > 0:
+        #     print(f"Found {len(duplicates)} duplicate indices.")
+            
+        #     # Get the indices in the original tensor where duplicates occur
+        #     duplicate_mask = indices[0].unsqueeze(1) == duplicates.unsqueeze(0)
+        #     duplicate_coords = voxel_coords[0][duplicate_mask.any(dim=1)]
+            
+        #     # Select the first duplicate index for further investigation
+        #     selected_duplicate = duplicates[0]
+            
+        #     # Find the voxel coordinates corresponding to this duplicate index
+        #     matching_coords_mask = indices[0] == selected_duplicate
+        #     matching_coords = voxel_coords[0][matching_coords_mask]
+            
+        #     print(f"Duplicate index: {selected_duplicate.item()}")
+        #     print("Voxel coordinates mapping to this index:")
+        #     print(matching_coords)
+        occupancy_grid_flat = occupancy_grid.view(batch_size, -1)
+        ones = torch.ones(indices.size(), dtype=torch.float64, device=voxel_coords.device)
+        occupancy_grid_flat = occupancy_grid_flat.scatter_add(1, indices, ones)
+        print("occupancy_grid_flat after scatter_add:", occupancy_grid_flat)
+        occupancy_grid = occupancy_grid_flat.view(batch_size, *grid_size)
         return occupancy_grid
 
 
 
-    def forward(self, preds, gts_orgin):
-
-        # assert preds.device == self.device, "preds is not on the correct device"
-        # assert gts_orgin.device == self.device, "gts_orgin[0] is not on the correct device"
-        # print("preds", preds.shape)
-        # print("gts_orgin", gts_orgin.shape)
-        # loss2 = self.subvoxel_loss(preds, gts_orgin)
-        chd = chamfer_dist()
-        # print("shape", preds.shape, gts_orgin.shape)
-
-        dist1, dist2, idx1, idx2 = chd(preds,gts_orgin)
-        loss2 = (torch.mean(dist1)) + (torch.mean(dist2))
-        # print("loss : ", loss2)
 
 
-        preds_voxel, _ = self.voxelize(preds)
-        gts_voxel, _ = self.voxelize(preds)
-
-        pred_occu = self.calculate_occupancy(preds_voxel.cpu().numpy(), (cfg.D, cfg.H, cfg.W))
-        gt = self.calculate_occupancy(gts_voxel, (cfg.D, cfg.H, cfg.W))
+    def tensor_to_ply(self, tensor, filename):
+        points = tensor.detach().cpu().numpy()
         
-        pred_occu = torch.tensor(pred_occu, dtype=torch.int64)
-        gt = torch.tensor(gt, dtype=torch.int64)
+        points = points.squeeze(0).astype(np.float64)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        o3d.io.write_point_cloud(filename, pcd)
 
-        pred_occu = nn.Sigmoid()(pred_occu)
-        gt = nn.Sigmoid()(gt)
-        loss1 = self.occupancy_loss(pred_occu, gt)
+    def forward(self, preds, gts):
+        chd = chamfer_dist()
+        dist1, dist2, idx1, idx2 = chd(preds,gts)
+        loss2 = (torch.mean(dist1)) + (torch.mean(dist2))
 
-        # print(loss1+loss2)
+        gts_voxel = self.voxelize(gts.float())
+        preds_voxel = self.voxelize(preds.float())
+        
+        # print(f"Preds requires_grad: {preds.requires_grad}")
+        # print(f"Preds grad_fn: {preds.grad_fn}")
+
+        # pred_occu = self.calculate_occupancy(preds_voxel)
+        # gts_occu = self.calculate_occupancy(gts_voxel)
+        
+        # print(f"calculate_occupancy requires_grad: {pred_occu.requires_grad}")
+        # print(f"calculate_occupancy grad_fn: {gt.grad_fn}")
+        dist1, dist2, idx1, idx2 = chd(preds_voxel.float(),gts_voxel.float())
+        loss1 = (torch.mean(dist1)) + (torch.mean(dist2))
+        # loss1 = self.occupancy_loss(pred_occu, gts_occu).float()
+        # print(f"Loss requires_grad: {loss1.requires_grad}")
+        # print(f"Loss grad_fn: {loss1.grad_fn}")
+        
+        
+        # print(loss1)
+        # print(loss2)
         return loss1+loss2
     
 

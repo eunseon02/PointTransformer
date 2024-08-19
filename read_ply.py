@@ -22,8 +22,8 @@ def display_ply_files(file_path1, file_path2):
 
 if __name__ == "__main__":
     # PLY 파일 경로를 지정
-    file_path1 = "pts.ply"
-    file_path2 = "gt_pts.ply"
+    file_path1 = "transformed_1.ply"
+    file_path2 = "pts_2.ply"
 
     # 두 개의 PLY 파일을 읽어 시각화
     display_ply_files(file_path1, file_path2)
