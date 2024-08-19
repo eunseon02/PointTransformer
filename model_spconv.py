@@ -15,19 +15,19 @@ import cumm
 input_shape = (cfg.D, cfg.H, cfg.W)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-def numpy_to_open3d_point_cloud(points):
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    o3d.visualization.draw_geometries([pcd])
+# def numpy_to_open3d_point_cloud(points):
+#     pcd = o3d.geometry.PointCloud()
+#     pcd.points = o3d.utility.Vector3dVector(points)
+#     o3d.visualization.draw_geometries([pcd])
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     
-    def __init__(self):
+    def __init__(self, batch_size):
         super(PointCloud3DCNN, self).__init__()
         enc_ch = self.ENC_CHANNELS
         dec_ch = self.DEC_CHANNELS
-        self.batch_size = 1
+        self.batch_size = batch_size
         self.num_point_features = 3
         self.max_num_points_per_voxel = 5
         self.Encoder1 = spconv.SparseSequential(
@@ -118,9 +118,9 @@ class PointCloud3DCNN(nn.Module):
         self.loss = NSLoss()
 
     def forward(self, sparse_tensor):
-        print("in", sparse_tensor)
+        # print("input", sparse_tensor)
         enc_0 = self.Encoder1(sparse_tensor)
-        print("enc_0", enc_0)
+        # print("enc_0", enc_0)
         enc_1 = self.Encoder2(enc_0)
         # print("enc_1", enc_1)
         enc_2 = self.Encoder3(enc_1)
@@ -167,26 +167,31 @@ class PointCloud3DCNN(nn.Module):
     def process_pointclouds(self, pc):
         np.random.seed(50051)
         from spconv.utils import Point2VoxelGPU3d
+        from spconv.pytorch.utils import PointToVoxel
+        pc = pc.to(device)
+
 
         # Voxel generator
-        gen = Point2VoxelGPU3d(
+        gen = PointToVoxel(
             vsize_xyz=[0.05, 0.05, 0.05],
             coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
             num_point_features=self.num_point_features,
             max_num_voxels=600000,
-            max_num_points_per_voxel=self.max_num_points_per_voxel
+            max_num_points_per_voxel=self.max_num_points_per_voxel,
+            device=device
         )
 
         # Convert torch.Tensor to numpy and then to tensorview Tensor
-        pc_tv = tv.from_numpy(pc.cpu().numpy()).cuda()
 
         # Generate voxels
-        voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_tv)
-
+        print("pc", pc.shape)
+        pc = pc.view(-1, 3)
+        voxels_tv, indices_tv, num_p_in_vx_tv, _ = gen.generate_voxel_with_id(pc)
         # Convert tensorview Tensors to PyTorch Tensors
         voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).cuda()
         indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).cuda()
         # tensor_to_ply(indices_torch, "indices.ply")
+        print("indices", indices_tv.shape)
         # Process valid voxels only
         valid = num_p_in_vx_tv.cpu().numpy() > 0
         voxels_flatten = voxels_torch.view(-1, self.num_point_features * self.max_num_points_per_voxel)[valid]
@@ -217,7 +222,7 @@ if __name__ == "__main__":
     pcd1 = o3d.io.read_point_cloud("dataset/train/batch_0/pts_0000_gt.ply")
     points1 = np.asarray(pcd1.points)
     tensor_to_ply(torch.Tensor(points1), "input.ply")
-    PointCloud3DCNN().to(device).process_pointclouds(torch.tensor(points1, dtype=torch.float32))
+    PointCloud3DCNN(1).to(device).process_pointclouds(torch.tensor(points1, dtype=torch.float32))
 
 
 
