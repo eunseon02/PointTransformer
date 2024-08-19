@@ -30,7 +30,7 @@ class PointTransformerV3ForGlobalFeature(PointTransformerV3):
     
         # Extract features
         features = point.feat  # Shape: (N, C)
-        # features= F.max_pool1d(features.unsqueeze(0).transpose(1, 2), kernel_size=2, stride=2).squeeze().transpose(0, 1)
+        features= F.max_pool1d(features.unsqueeze(0).transpose(1, 2), kernel_size=2, stride=2).squeeze().transpose(0, 1)
         features = self.fc1(features)
         
         return features
