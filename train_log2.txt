@@ -52,3 +52,4 @@ Epoch [40/500] - Train Loss: 11.3894, Validation Loss: 12.9411, Time: 404.0149s
 Epoch [41/500] - Train Loss: 11.3730, Validation Loss: 12.4984, Time: 412.6449s
 Epoch [42/500] - Train Loss: 11.2074, Validation Loss: 13.9669, Time: 412.6749s
 Epoch [43/500] - Train Loss: 11.2412, Validation Loss: 12.7087, Time: 482.1569s
+Epoch [44/500] - Train Loss: 11.2493, Validation Loss: 12.7834, Time: 453.0752s
