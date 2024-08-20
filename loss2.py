@@ -229,7 +229,7 @@ class NSLoss(nn.Module):
         dist1, dist2, idx1, idx2 = chd(preds,gts)
         loss2 = (torch.mean(dist1)) + (torch.mean(dist2))
         # loss2 = loss2 *0.001
-        log_loss2 = torch.log(loss2)
+        # log_loss2 = torch.log(loss2)
         # print("loss2", loss2)
         
         # print(f"Preds requires_grad - before voxelize: {preds.requires_grad}")
@@ -259,10 +259,10 @@ class NSLoss(nn.Module):
         
 
         logging.info(f"loss1 {loss1}")
-        logging.info(f"loss2 {log_loss2}")
-        # print("loss1", loss1.grad_fn)
-        # print("loss2", loss2.grad_fn)
-        return loss1
+        logging.info(f"loss2 {loss2}")
+        # print("loss1", loss1)
+        # print("loss2", loss2)
+        return loss1 + loss2
     
 
         

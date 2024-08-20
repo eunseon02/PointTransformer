@@ -76,9 +76,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
         )
-        self.cls5 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[3], 1, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
-        )
+        # self.cls5 = spconv.SparseSequential(
+        #     spconv.SubMConv3d(dec_ch[3], 1, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
+        # )
         self.Decoder4 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[3], dec_ch[2], kernel_size=3, indice_key="spconv4"),
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
@@ -87,9 +87,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU()
         )
-        # self.cls4 = spconv.SparseSequential(
-        #     spconv.SubMConv3d(dec_ch[2], 1, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
-        # )
+        self.cls4 = spconv.SparseSequential(
+            spconv.SubMConv3d(dec_ch[2], 1, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
+        )
         self.Decoder3 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[2], dec_ch[1], kernel_size=3, indice_key="spconv3"),
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
@@ -139,43 +139,51 @@ class PointCloud3DCNN(nn.Module):
         dec_2 = self.Decoder4(dec_3)
         # print("dec_2", dec_2)
         dec_2 = dec_2 + enc_2
+        # check = self.cls4(dec_2)
+        # print("check", check.shape)
         dec_1 = self.Decoder3(dec_2)
         # print("dec_1", dec_1)
 
         dec_1 = dec_1 + enc_1
         dec_0 = self.Decoder2(dec_1)
-        # x = self.dense(dec_0)
         coords = self.fc1(dec_0.features)
+        if coords.requires_grad:
+            coords.retain_grad()
         output = self.postprocess(dec_0, coords)
+        if coords.requires_grad:
+            output.retain_grad()
+
+        # print(f"output grad_fn: {output.grad_fn}")
         return output
     
     def postprocess(self, preds, predicted_coords):
+        import torch.nn.functional as F
+
         batch_size = preds.batch_size
         output_coords = []
+        max_num_points = 2000
 
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)
             batch_coords = predicted_coords[batch_mask]
-            max_num_points = 1700
+            # print(f"batch_coords: {batch_coords.grad_fn}")
+            
+            if batch_coords.shape[0] > max_num_points:
+                print("output : ", batch_coords.shape[0])
+                batch_coords = batch_coords[:max_num_points]
+            
             padding_size = max_num_points - batch_coords.shape[0]
             if padding_size > 0:
-                padded_batch_coords = torch.cat([
-                    batch_coords,
-                    torch.zeros((padding_size, 3), dtype=batch_coords.dtype, device=batch_coords.device)
-                ], dim=0)
+                padding = torch.zeros((padding_size, 3), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
+                padded_batch_coords = torch.cat([batch_coords, padding], dim=0)
+                # print(f"padded_batch_coords grad_fn: {padded_batch_coords.grad_fn}")
+
             else:
                 padded_batch_coords = batch_coords
-
             output_coords.append(padded_batch_coords)
 
         output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
         return output
-
-    def get_loss(self, pred, gt_process, gt_pts):
-        # print("pred", pred.shape)
-        # print("gt_process", gt_process.shape)
-        # print("gt_pts", gt_pts.shape)
-        return self.loss(pred, gt_process, gt_pts)
 
     def process_pointclouds(self, pc):
         np.random.seed(50051)

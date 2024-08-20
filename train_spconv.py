@@ -235,18 +235,34 @@ class Train():
                     torch.cuda.empty_cache()
                 else:
                     pts = pts.repeat_interleave(2, dim=0)
-
+                # nan_exists = torch.isnan(pts).any()
+                # if nan_exists:
+                #     print("pts 텐서에 NaN 값이 존재합니다.")
+                # else:
+                #     print("pts 텐서에 NaN 값이 없습니다.")
+                pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
                 self.optimizer.zero_grad()
                 preds = self.model(sptensor)
+
+                # loss = self.criterion(preds.unsqueeze(0), gt_pts.view(-1, 3).unsqueeze(0))
                 loss = self.criterion(preds, gt_pts)
+
+
                 loss.backward()
+                # print(f"preds grad: {preds.grad}")
                 # for name, param in self.model.named_parameters():
                 #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
                 #     if param.grad is not None:
                 #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
                 #     else:
                 #         print(f"Layer: {name} | No gradient calculated!")
+                # for name, param in self.model.named_parameters():
+                #     if not param.requires_grad:
+                #         print(f"Parameter {name} does not require grad!")
+                #     else:
+                #         print(f"Parameter {name} requires grad.")
+
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
@@ -332,7 +348,8 @@ class Train():
                         torch.cuda.empty_cache()
                     else:
                         pts = pts.repeat_interleave(2, dim=0)
-
+                        
+                    pts = torch.nan_to_num(pts, nan=0.0)
                     sptensor = self.preprocess(pts)
                     preds = self.model(sptensor)
                     loss = self.criterion(preds, gt_pts)
