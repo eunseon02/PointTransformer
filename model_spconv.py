@@ -146,17 +146,7 @@ class PointCloud3DCNN(nn.Module):
         dec_0 = self.Decoder2(dec_1)
         # x = self.dense(dec_0)
         coords = self.fc1(dec_0.features)
-        print("dec_0.features", dec_0.features.shape)
         output = self.postprocess(dec_0, coords)
-        
-        # batch_size, num_channels, depth, height, width = x.shape
-        # x = x.permute(0, 2, 3, 4, 1).contiguous().view(-1, num_channels)
-        # print("dense_tensor", x.shape)
-        # x = self.fc1(x)
-        # print("out", x.shape)
-        # # print("dec_0", dec_0)
-        
-        # return x
         return output
     
     def postprocess(self, preds, predicted_coords):
@@ -164,11 +154,8 @@ class PointCloud3DCNN(nn.Module):
         output_coords = []
 
         for batch_idx in range(batch_size):
-            # batch_mask를 사용하여 해당 배치에 대한 좌표 선택
             batch_mask = (preds.indices[:, 0] == batch_idx)
-            batch_coords = predicted_coords[batch_mask]  # 해당 배치의 좌표 추출
-
-            # 좌표 패딩 (선택 사항)
+            batch_coords = predicted_coords[batch_mask]
             max_num_points = 1700
             padding_size = max_num_points - batch_coords.shape[0]
             if padding_size > 0:
@@ -181,9 +168,7 @@ class PointCloud3DCNN(nn.Module):
 
             output_coords.append(padded_batch_coords)
 
-        # 배치별로 쌓아 최종 출력 생성
         output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
-        print("output", output.shape)
         return output
 
     def get_loss(self, pred, gt_process, gt_pts):

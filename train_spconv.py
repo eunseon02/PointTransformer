@@ -279,16 +279,8 @@ class Train():
                     pts = pts.repeat_interleave(2, dim=0)
 
                 sptensor = self.preprocess(pts)
-                # forward
                 self.optimizer.zero_grad()
-                
-                # backward
-                # with torch.autograd.detect_anomaly():
                 preds = self.model(sptensor)
-                print(preds.shape)
-                # print(preds.requires_grad)
-                # preds = self.postprocess(preds)
-                # print("preds", preds.shape)
                 loss = self.criterion(preds, gt_pts)
                 loss.backward()
                 # for name, param in self.model.named_parameters():
@@ -385,7 +377,6 @@ class Train():
 
                     sptensor = self.preprocess(pts)
                     preds = self.model(sptensor)
-                    preds = self.postprocess(preds)
                     loss = self.criterion(preds, gt_pts)
                     
                     # transform
