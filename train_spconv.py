@@ -44,9 +44,6 @@ def tensor_to_ply(tensor, filename):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
-# setting logging
-logging.basicConfig(filename='memory_log.txt', level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 def profileit(func):
     def wrapper(*args, **kwargs):
@@ -57,18 +54,18 @@ def profileit(func):
         return retval
 
     return wrapper
+
 class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 128
+        self.batch_size = 256
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
         self.model_path = args.model_path
         if self.model_path != '':
             self._load_pretrain(args.model_path)
-        self.rank = 0  # rank는 필요 없음
         
         self.train_path = 'dataset/train'
         self.train_dataset = PointCloudDataset(self.train_path)
@@ -198,44 +195,6 @@ class Train():
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
         return sparse_tensor
     
-    def postprocess(self, preds):
-        batch_size = preds.batch_size
-        output_coords = []
-        for batch_idx in range(batch_size):
-            # Create a mask for the current batch index
-            print("feature", preds.features.shape)
-            print("indices", preds.indices.shape)
-            batch_mask = (preds.indices[:, 0] == batch_idx)
-            # Extract coordinates for the current batch
-            batch_coords = preds.indices[batch_mask][:, 1:]  # Extract (x, y, z)
-            # batch_coords = batch_coords.float()
-            
-            print(f"batch_coords grad_fn: {batch_coords.grad_fn}")
-
-
-            # Append the batch coordinates to the output list
-            max_num_points =1700
-            padding_size = max_num_points - batch_coords.shape[0]
-            if padding_size > 0:
-                # Use torch.cat to manually pad the tensor with zeros
-                padded_batch_coords = torch.cat([batch_coords, torch.zeros((padding_size, 3), dtype=torch.float, device=batch_coords.device)], dim=0)
-            else:
-                padded_batch_coords = batch_coords
-
-            # Append the padded batch coordinates to the list
-            output_coords.append(padded_batch_coords)
-
-        # Stack the list into a single tensor (batch_size, max_num_points, 3)
-        output = torch.stack(output_coords, dim=0)
-
-        # Convert list of tensors to a single tensor with shape (batch_size, num_points, 3)
-        output = torch.nn.utils.rnn.pad_sequence(output_coords, batch_first=True, padding_value=0)
-        # print(f"Output grad_fn after stack: {output.grad_fn}")
-        return output
-
-
-    
-    
     # @profileit
     def train_epoch(self, epoch, prev_preds):
         epoch_start_time = time.time()
@@ -271,7 +230,6 @@ class Train():
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
                     # print(f"prev_preds-before cat : ", prev_preds[:5])
-                    # pts = cat_pts
                     del prev_preds_tensor
                     # gc.collect()
                     torch.cuda.empty_cache()
@@ -427,8 +385,6 @@ class Train():
 
         
     def _load_pretrain(self, pretrain):
-        # Check if distributed training is being used
-        is_distributed = torch.distributed.is_initialized()
         # Load checkpoint
         checkpoint = torch.load(pretrain, map_location='cpu')
         # Extract the model's state dictionary from the checkpoint
