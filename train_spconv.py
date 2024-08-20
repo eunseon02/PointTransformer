@@ -28,7 +28,7 @@ import io
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from loss import NSLoss
+from loss2 import NSLoss
 import gc
 import logging
 from collections import OrderedDict
@@ -206,9 +206,23 @@ class Train():
             batch_mask = (preds.indices[:, 0] == batch_idx)
             # Extract coordinates for the current batch
             batch_coords = preds.indices[batch_mask][:, 1:]  # Extract (x, y, z)
+            batch_coords = batch_coords.float().requires_grad_(True)
+
 
             # Append the batch coordinates to the output list
-            output_coords.append(batch_coords.float().requires_grad_(True))
+            max_num_points =1700
+            padding_size = max_num_points - batch_coords.shape[0]
+            if padding_size > 0:
+                # Use torch.cat to manually pad the tensor with zeros
+                padded_batch_coords = torch.cat([batch_coords, torch.zeros((padding_size, 3), dtype=torch.float, device=batch_coords.device)], dim=0)
+            else:
+                padded_batch_coords = batch_coords
+
+            # Append the padded batch coordinates to the list
+            output_coords.append(padded_batch_coords)
+
+        # Stack the list into a single tensor (batch_size, max_num_points, 3)
+        output = torch.stack(output_coords, dim=0)
 
         # Convert list of tensors to a single tensor with shape (batch_size, num_points, 3)
         output = torch.nn.utils.rnn.pad_sequence(output_coords, batch_first=True, padding_value=0)
