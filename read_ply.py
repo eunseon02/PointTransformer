@@ -22,8 +22,8 @@ def display_ply_files(file_path1, file_path2):
 
 if __name__ == "__main__":
     # PLY 파일 경로를 지정
-    file_path1 = "indices.ply"
-    file_path2 = "pts.ply"
+    file_path1 = "output.ply"
+    file_path2 = "points.ply"
 
     # 두 개의 PLY 파일을 읽어 시각화
     display_ply_files(file_path1, file_path2)

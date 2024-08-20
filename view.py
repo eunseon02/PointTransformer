@@ -26,4 +26,4 @@ def plot_ply(filename):
     plt.show()
 
 # Example usage
-plot_ply("occupancy_grid.ply_3.ply")
+plot_ply("gts_voxel.ply")

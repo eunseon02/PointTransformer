@@ -119,7 +119,7 @@ class PointCloudDataset(Dataset):
         row = df[df['filename'] == file_path]
 
         if row.empty:
-            print(f"No data found for file name: {file_path}")
+            # print(f"No data found for file name: {file_path}")
             return np.zeros(3, dtype=np.float32), np.array([1, 0, 0, 0], dtype=np.float32)
         else:
             # print(row)

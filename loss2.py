@@ -158,27 +158,13 @@ class NSLoss(nn.Module):
         x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
         y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
         z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
+        
+        x_coords = torch.nan_to_num(x_coords, nan=0.0)
+        y_coords = torch.nan_to_num(y_coords, nan=0.0)
+        z_coords = torch.nan_to_num(z_coords, nan=0.0)
 
         indices = ((x_coords * grid_size[1] * grid_size[2]) + (y_coords * grid_size[2]) + z_coords).long()
-        unique_indices, counts = indices[0].unique(return_counts=True)
-        duplicates = unique_indices[counts > 1]
-        # if len(duplicates) > 0:
-        #     print(f"Found {len(duplicates)} duplicate indices.")
-            
-        #     # Get the indices in the original tensor where duplicates occur
-        #     duplicate_mask = indices[0].unsqueeze(1) == duplicates.unsqueeze(0)
-        #     duplicate_coords = voxel_coords[0][duplicate_mask.any(dim=1)]
-            
-        #     # Select the first duplicate index for further investigation
-        #     selected_duplicate = duplicates[0]
-            
-        #     # Find the voxel coordinates corresponding to this duplicate index
-        #     matching_coords_mask = indices[0] == selected_duplicate
-        #     matching_coords = voxel_coords[0][matching_coords_mask]
-            
-        #     print(f"Duplicate index: {selected_duplicate.item()}")
-        #     print("Voxel coordinates mapping to this index:")
-        #     print(matching_coords)
+
         occupancy_grid_flat = occupancy_grid.view(batch_size, -1)
         ones = torch.ones(indices.size(), dtype=torch.float64, device=voxel_coords.device)
         occupancy_grid_flat = occupancy_grid_flat.scatter_add(1, indices, ones)
@@ -251,7 +237,7 @@ class NSLoss(nn.Module):
 
         gts_voxel = self.voxelize2(gts.float())
         preds_voxel = self.voxelize2(preds.float())
-        # self.tensor_to_ply(gts_voxel, "gts_voxel.ply")
+        self.tensor_to_ply(gts_voxel, "gts_voxel.ply")
         
         # print(f"Preds requires_grad - after voxelize: {preds_voxel.requires_grad}")
         # print(f"Preds grad_fn - after voxelize: {preds_voxel.grad_fn}")
@@ -276,7 +262,7 @@ class NSLoss(nn.Module):
         logging.info(f"loss2 {log_loss2}")
         # print("loss1", loss1.grad_fn)
         # print("loss2", loss2.grad_fn)
-        return loss2
+        return loss1
     
 
         

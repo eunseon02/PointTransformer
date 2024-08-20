@@ -87,9 +87,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU()
         )
-        self.cls4 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[2], 1, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
-        )
+        # self.cls4 = spconv.SparseSequential(
+        #     spconv.SubMConv3d(dec_ch[2], 1, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
+        # )
         self.Decoder3 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[2], dec_ch[1], kernel_size=3, indice_key="spconv3"),
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
@@ -98,9 +98,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU()
         )
-        self.cls3 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[1], 1, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
-        )
+        # self.cls3 = spconv.SparseSequential(
+        #     spconv.SubMConv3d(dec_ch[1], 1, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
+        # )
         self.Decoder2 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[1], dec_ch[0], kernel_size=3, indice_key="spconv2"),
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
@@ -109,9 +109,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU()
         )
-        self.cls2 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[0], 1, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
-        )
+        # self.cls2 = spconv.SparseSequential(
+        #     spconv.SubMConv3d(dec_ch[0], 1, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
+        # )
         self.dense = spconv.ToDense()
         self.fc1 = nn.Linear(16,3)
 
@@ -145,7 +145,9 @@ class PointCloud3DCNN(nn.Module):
         dec_1 = dec_1 + enc_1
         dec_0 = self.Decoder2(dec_1)
         # x = self.dense(dec_0)
-        output = self.fc1(dec_0.features)
+        coords = self.fc1(dec_0.features)
+        print("dec_0.features", dec_0.features.shape)
+        output = self.postprocess(dec_0, coords)
         
         # batch_size, num_channels, depth, height, width = x.shape
         # x = x.permute(0, 2, 3, 4, 1).contiguous().view(-1, num_channels)
@@ -155,8 +157,34 @@ class PointCloud3DCNN(nn.Module):
         # # print("dec_0", dec_0)
         
         # return x
-        return dec_0
+        return output
     
+    def postprocess(self, preds, predicted_coords):
+        batch_size = preds.batch_size
+        output_coords = []
+
+        for batch_idx in range(batch_size):
+            # batch_mask를 사용하여 해당 배치에 대한 좌표 선택
+            batch_mask = (preds.indices[:, 0] == batch_idx)
+            batch_coords = predicted_coords[batch_mask]  # 해당 배치의 좌표 추출
+
+            # 좌표 패딩 (선택 사항)
+            max_num_points = 1700
+            padding_size = max_num_points - batch_coords.shape[0]
+            if padding_size > 0:
+                padded_batch_coords = torch.cat([
+                    batch_coords,
+                    torch.zeros((padding_size, 3), dtype=batch_coords.dtype, device=batch_coords.device)
+                ], dim=0)
+            else:
+                padded_batch_coords = batch_coords
+
+            output_coords.append(padded_batch_coords)
+
+        # 배치별로 쌓아 최종 출력 생성
+        output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
+        print("output", output.shape)
+        return output
 
     def get_loss(self, pred, gt_process, gt_pts):
         # print("pred", pred.shape)

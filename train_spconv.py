@@ -15,7 +15,7 @@ import time
 import argparse
 import open3d as o3d
 import spconv.pytorch as spconv
-
+import cumm.tensorview as tv
 
 from model_spconv import PointCloud3DCNN
 from torch.utils.data import Dataset, DataLoader
@@ -35,9 +35,9 @@ from collections import OrderedDict
 
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
-    points = tensor.cpu().numpy()
+    points = tensor.cpu().detach().numpy()
     points = points.astype(np.float64)
-    points=  points.squeeze(0)
+    points=  points[0]
     if points.shape[1] != 3:
         raise ValueError(f"Expected point cloud data with shape (n, 3), but got {points.shape}")
 
@@ -61,7 +61,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 32
+        self.batch_size = 128
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -82,7 +82,7 @@ class Train():
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
-        self.optimizer = optim.Adam(self.parameter, lr=0.0001*16/self.batch_size, betas=(0.9, 0.999), weight_decay=1e-6)
+        self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
         self.weight_folder = "spconv_weight"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_spconv.txt'
         self.input_shape = (cfg.D, cfg.H, cfg.W)
@@ -164,21 +164,21 @@ class Train():
         from spconv.pytorch.utils import PointToVoxel
 
         # Voxel generator
-        gen = PointToVoxel(
+        gen = Point2VoxelGPU3d(
             vsize_xyz=[0.05, 0.05, 0.05],
             coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
             num_point_features=self.model.num_point_features,
             max_num_voxels=600000,
-            max_num_points_per_voxel=self.model.max_num_points_per_voxel,
-            device=self.device
-        )
+            max_num_points_per_voxel=self.model.max_num_points_per_voxel
+            )
         
         batch_size = pc.shape[0]
         all_voxels, all_indices = [], []
 
         for batch_idx in range(batch_size):
             pc_single = pc[batch_idx]
-            voxels_tv, indices_tv, num_p_in_vx_tv, _ = gen.generate_voxel_with_id(pc_single)
+            pc_single = tv.from_numpy(pc_single.cpu().numpy())
+            voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
 
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
@@ -203,10 +203,14 @@ class Train():
         output_coords = []
         for batch_idx in range(batch_size):
             # Create a mask for the current batch index
+            print("feature", preds.features.shape)
+            print("indices", preds.indices.shape)
             batch_mask = (preds.indices[:, 0] == batch_idx)
             # Extract coordinates for the current batch
             batch_coords = preds.indices[batch_mask][:, 1:]  # Extract (x, y, z)
-            batch_coords = batch_coords.float().requires_grad_(True)
+            # batch_coords = batch_coords.float()
+            
+            print(f"batch_coords grad_fn: {batch_coords.grad_fn}")
 
 
             # Append the batch coordinates to the output list
@@ -226,6 +230,7 @@ class Train():
 
         # Convert list of tensors to a single tensor with shape (batch_size, num_points, 3)
         output = torch.nn.utils.rnn.pad_sequence(output_coords, batch_first=True, padding_value=0)
+        # print(f"Output grad_fn after stack: {output.grad_fn}")
         return output
 
 
@@ -253,6 +258,7 @@ class Train():
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
                     continue
+                
                 pts = pts.to(self.device)
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
@@ -279,11 +285,18 @@ class Train():
                 # backward
                 # with torch.autograd.detect_anomaly():
                 preds = self.model(sptensor)
+                print(preds.shape)
                 # print(preds.requires_grad)
-                preds = self.postprocess(preds)
+                # preds = self.postprocess(preds)
                 # print("preds", preds.shape)
                 loss = self.criterion(preds, gt_pts)
                 loss.backward()
+                # for name, param in self.model.named_parameters():
+                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                #     if param.grad is not None:
+                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                #     else:
+                #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
