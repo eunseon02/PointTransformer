@@ -113,6 +113,9 @@ class NSLoss(nn.Module):
         grid_coord = (coord - global_min) / 0.1
         return grid_coord.int()
     
+    
+
+    
 
         
 
