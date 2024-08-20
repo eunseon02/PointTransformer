@@ -3,3 +3,7 @@ weight/
 spconv_weight/
 sample/
 dataset/
+loss_log.txt
+train_log.txt
+train_log_spconv.txt
+train_log2.txt
