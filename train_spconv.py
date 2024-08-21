@@ -28,7 +28,7 @@ import io
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from loss2 import NSLoss
+from loss import NSLoss
 import gc
 import logging
 from collections import OrderedDict
@@ -45,6 +45,26 @@ def tensor_to_ply(tensor, filename):
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
 
+def save_single_occupancy_grid_as_ply(occupancy_grid, file_name="occupancy_grid.ply"):
+    # Assume occupancy_grid is of shape (batch_size, 1, H, W, D)
+    _, _, H, W, D = occupancy_grid.shape
+    
+    # Extract the occupancy grid for the first batch item
+    grid = occupancy_grid[0, 0]  # shape (H, W, D)
+
+    # Get the indices of the occupied voxels
+    occupied_voxels = torch.nonzero(grid > 0, as_tuple=False).cpu().numpy()
+
+    # Convert to float32 if necessary
+    occupied_voxels = occupied_voxels.astype(np.float32)
+
+    # Create a point cloud object
+    point_cloud = o3d.geometry.PointCloud()
+    point_cloud.points = o3d.utility.Vector3dVector(occupied_voxels)
+
+    # Save the point cloud as a PLY file
+    o3d.io.write_point_cloud(file_name, point_cloud)
+    print(f"Saved occupancy grid to {file_name}")
 def profileit(func):
     def wrapper(*args, **kwargs):
         datafn = func.__name__ + ".profile" # Name the data file sensibly
@@ -59,7 +79,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 2
+        self.batch_size = 32
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -178,9 +198,18 @@ class Train():
             pc_single = pc[batch_idx]
             pc_single = tv.from_numpy(pc_single.cpu().numpy())
             voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
+            # print(voxels_tv)
 
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
+            # print(voxels_torch)
+            # mean = voxels_torch.mean()
+            # std = voxels_torch.std()
+            # voxels_torch = (voxels_torch - mean) / std
+            # print(voxels_torch)
+            mean = voxels_torch.mean(dim=1, keepdim=True)  # (batch, 1, 3)
+            voxels_torch = voxels_torch - mean
+            # print(voxels_torch)
             # valid = num_p_in_vx_tv.cpu().numpy() > 0
             # voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
             # indices_torch = indices_torch[valid]
@@ -289,6 +318,7 @@ class Train():
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
                 gt_occu = self.occupancy_grid(gt_pts)
+                # save_single_occupancy_grid_as_ply(gt_occu.dense())
                 # sys.exit(1)
                 self.optimizer.zero_grad()
                 preds, occu = self.model(sptensor)
@@ -298,21 +328,13 @@ class Train():
                 # print(loss)
 
                 loss.backward()
-                # print(f"preds grad: {occu_preds.grad}")
-                # print(f"loss grad: {loss.grad}")
 
-                for name, param in self.model.named_parameters():
-                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                    if param.grad is not None:
-                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                    else:
-                        print(f"Layer: {name} | No gradient calculated!")
                 # for name, param in self.model.named_parameters():
-                #     if not param.requires_grad:
-                #         print(f"Parameter {name} does not require grad!")
+                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                #     if param.grad is not None:
+                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
                 #     else:
-                #         print(f"Parameter {name} requires grad.")
-
+                #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
@@ -398,12 +420,13 @@ class Train():
                         torch.cuda.empty_cache()
                     else:
                         pts = pts.repeat_interleave(2, dim=0)
+                        pts = pts.view(self.batch_size, -1, 3)
                         
                     pts = torch.nan_to_num(pts, nan=0.0)
-                    print(pts.shape)
                     sptensor = self.preprocess(pts)
-                    preds = self.model(sptensor)
-                    loss = self.criterion(preds, gt_pts)
+                    gt_occu = self.occupancy_grid(gt_pts)
+                    preds, occu = self.model(sptensor)
+                    loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
                     
                     # transform
                     transformed_preds = []

@@ -28,7 +28,7 @@ class PointCloud3DCNN(nn.Module):
         enc_ch = self.ENC_CHANNELS
         dec_ch = self.DEC_CHANNELS
         self.batch_size = batch_size
-        self.num_point_features = 1
+        self.num_point_features = 3
         self.max_num_points_per_voxel = 3
         self.Encoder1 = spconv.SparseSequential(
             spconv.SubMConv3d(self.num_point_features*self.max_num_points_per_voxel, enc_ch[0], kernel_size=3, stride=1, indice_key="subm1"),
