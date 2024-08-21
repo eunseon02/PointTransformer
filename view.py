@@ -26,4 +26,4 @@ def plot_ply(filename):
     plt.show()
 
 # Example usage
-plot_ply("gts_voxel.ply")
+plot_ply("indices_torch.ply")

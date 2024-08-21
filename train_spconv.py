@@ -16,7 +16,7 @@ import argparse
 import open3d as o3d
 import spconv.pytorch as spconv
 import cumm.tensorview as tv
-
+import sys
 from model_spconv import PointCloud3DCNN
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
@@ -37,7 +37,7 @@ def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
     points = points.astype(np.float64)
-    points=  points[0]
+    # points=  points[0]
     if points.shape[1] != 3:
         raise ValueError(f"Expected point cloud data with shape (n, 3), but got {points.shape}")
 
@@ -82,7 +82,8 @@ class Train():
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
         self.weight_folder = "check"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_spconv.txt'
-        self.input_shape = (cfg.D, cfg.H, cfg.W)
+        self.input_shape = (50, 120, 120)
+        
         torch.cuda.empty_cache()
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
@@ -171,6 +172,7 @@ class Train():
         
         batch_size = pc.shape[0]
         all_voxels, all_indices = [], []
+        tensors = []
 
         for batch_idx in range(batch_size):
             pc_single = pc[batch_idx]
@@ -179,20 +181,24 @@ class Train():
 
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
-
-            valid = num_p_in_vx_tv.cpu().numpy() > 0
-            voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
-            indices_torch = indices_torch[valid]
+            # valid = num_p_in_vx_tv.cpu().numpy() > 0
+            # voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
+            # indices_torch = indices_torch[valid]
+            voxels_flatten = torch.abs(voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel))
+            # tensor_to_ply(indices_torch, "indices_torch.ply")
 
             batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
             indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
-
+            # tensor = spconv.SparseConvTensor(voxels_flatten, indices_combined, self.input_shape, self.batch_size)
             all_voxels.append(voxels_flatten)
-            all_indices.append(indices_combined)
+            all_indices.append(indices_combined.int())
+            # tensors.append(tensor)
 
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
+
+        # dense_tensor = sparse_tensor.dense()
         return sparse_tensor
     
     # @profileit
@@ -235,30 +241,33 @@ class Train():
                     torch.cuda.empty_cache()
                 else:
                     pts = pts.repeat_interleave(2, dim=0)
+                    pts = pts.view(self.batch_size, -1, 3)
                 # nan_exists = torch.isnan(pts).any()
                 # if nan_exists:
                 #     print("pts 텐서에 NaN 값이 존재합니다.")
                 # else:
                 #     print("pts 텐서에 NaN 값이 없습니다.")
                 pts = torch.nan_to_num(pts, nan=0.0)
+                print(pts.shape)
                 sptensor = self.preprocess(pts)
+                # sys.exit(1)
                 self.optimizer.zero_grad()
                 preds = self.model(sptensor)
                 # loss = self.criterion(preds.unsqueeze(0), gt_pts.view(-1, 3).unsqueeze(0))
                 loss = self.criterion(preds, gt_pts)
                 # loss = F.binary_cross_entropy_with_logits(occu_preds, self.model.calculate_occupancy(gt_pts), reduction='mean')
-                print(loss)
+                # print(loss)
 
                 loss.backward()
                 # print(f"preds grad: {occu_preds.grad}")
                 # print(f"loss grad: {loss.grad}")
 
-                for name, param in self.model.named_parameters():
-                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                    if param.grad is not None:
-                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                    else:
-                        print(f"Layer: {name} | No gradient calculated!")
+                # for name, param in self.model.named_parameters():
+                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                #     if param.grad is not None:
+                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                #     else:
+                #         print(f"Layer: {name} | No gradient calculated!")
                 # for name, param in self.model.named_parameters():
                 #     if not param.requires_grad:
                 #         print(f"Parameter {name} does not require grad!")
@@ -352,6 +361,7 @@ class Train():
                         pts = pts.repeat_interleave(2, dim=0)
                         
                     pts = torch.nan_to_num(pts, nan=0.0)
+                    print(pts.shape)
                     sptensor = self.preprocess(pts)
                     preds = self.model(sptensor)
                     loss = self.criterion(preds, gt_pts)

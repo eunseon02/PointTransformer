@@ -28,8 +28,8 @@ class PointCloud3DCNN(nn.Module):
         enc_ch = self.ENC_CHANNELS
         dec_ch = self.DEC_CHANNELS
         self.batch_size = batch_size
-        self.num_point_features = 3
-        self.max_num_points_per_voxel = 5
+        self.num_point_features = 1
+        self.max_num_points_per_voxel = 3
         self.Encoder1 = spconv.SparseSequential(
             spconv.SubMConv3d(self.num_point_features*self.max_num_points_per_voxel, enc_ch[0], kernel_size=3, stride=1, indice_key="subm1"),
             nn.BatchNorm1d(enc_ch[0], momentum=0.1),
@@ -112,8 +112,14 @@ class PointCloud3DCNN(nn.Module):
         # self.cls2 = spconv.SparseSequential(
         #     spconv.SubMConv3d(dec_ch[0], 1, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         # )
+        self.occu = spconv.SparseSequential(
+            spconv.ToDense(),
+            nn.Conv3d(16, 16, kernel_size=3, padding=1)
+        )
+        self.conv = nn.Conv3d(16, 1, kernel_size=3, padding=1)
         self.dense = spconv.ToDense()
         self.fc1 = nn.Linear(16,3)
+        self.fc2 = nn.Linear(16,1)
 
         self.loss = NSLoss()
 
@@ -139,25 +145,20 @@ class PointCloud3DCNN(nn.Module):
         dec_2 = self.Decoder4(dec_3)
         # print("dec_2", dec_2)
         dec_2 = dec_2 + enc_2
-        check = self.cls4(dec_2)
-        print("check", check.features.shape)
+        # print("check", check.features.shape)
         dec_1 = self.Decoder3(dec_2)
         # print("dec_1", dec_1)
 
         dec_1 = dec_1 + enc_1
         dec_0 = self.Decoder2(dec_1)
+        occu = self.conv(dec_0.dense())
         coords = self.fc1(dec_0.features)
-        # print("dense", dec_0.dense())
         if coords.requires_grad:
             coords.retain_grad()
-        output = self.postprocess(dec_0, coords)
+        coords = self.postprocess(dec_0, coords)
         if coords.requires_grad:
-            output.retain_grad()
-            
-        occu_output = self.calculate_occupancy(output)
-        occu_output.retain_grad()
-        # print(f"output grad_fn: {output.grad_fn}")
-        return output
+            coords.retain_grad()
+        return coords, occu
     
     def postprocess(self, preds, predicted_coords):
         import torch.nn.functional as F
@@ -225,8 +226,6 @@ class PointCloud3DCNN(nn.Module):
         occupancy_grid_flat = torch.clamp(occupancy_grid_flat, min=0, max=1)
         occupancy_grid = occupancy_grid_flat.view(batch_size, *grid_size)
         occupancy_grid.retain_grad()
-        print(f"x_coords grad_fn: {x_coords.grad_fn}")
-        print(f"occupancy_grid grad_fn: {occupancy_grid.grad_fn}")
     
         return occupancy_grid
 
