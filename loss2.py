@@ -85,8 +85,8 @@ class BinaryCrossEntropyLoss(nn.Module):
             loss = F.binary_cross_entropy(preds, one_hot, reduction='mean')
         else:
             # print(preds.min(), preds.max(), preds.mean())
-            preds = torch.sigmoid(preds)
-            gts = torch.sigmoid(gts)
+            # preds = torch.sigmoid(preds)
+            # gts = torch.sigmoid(gts)
             loss = F.binary_cross_entropy_with_logits(preds, gts, reduction='mean')
         # print(f"loss: {loss}")
 
@@ -152,68 +152,106 @@ class NSLoss(nn.Module):
     def calculate_occupancy(self, voxel_coords):
         grid_size = (120, 120, 70)
         batch_size = voxel_coords.size(0)
+        # if not voxel_coords.requires_grad:
+        #     voxel_coords.requires_grad = True
         
         occupancy_grid = torch.zeros((batch_size, *grid_size), dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
+        
         x_coords, y_coords, z_coords = voxel_coords.unbind(-1)
         x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
         y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
         z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
+        # x_coords.retain_grad()
+ 
         
         x_coords = torch.nan_to_num(x_coords, nan=0.0)
         y_coords = torch.nan_to_num(y_coords, nan=0.0)
         z_coords = torch.nan_to_num(z_coords, nan=0.0)
+        
 
         indices = ((x_coords * grid_size[1] * grid_size[2]) + (y_coords * grid_size[2]) + z_coords).long()
 
         occupancy_grid_flat = occupancy_grid.view(batch_size, -1)
-        ones = torch.ones(indices.size(), dtype=torch.float64, device=voxel_coords.device)
+        ones = torch.ones(indices.size(), dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
         occupancy_grid_flat = occupancy_grid_flat.scatter_add(1, indices, ones)
+        occupancy_grid_flat.retain_grad()
         # print("occupancy_grid_flat after scatter_add:", occupancy_grid_flat)
         occupancy_grid_flat = torch.clamp(occupancy_grid_flat, min=0, max=1)
+        occupancy_grid_flat.retain_grad()
         occupancy_grid = occupancy_grid_flat.view(batch_size, *grid_size)
+    
         return occupancy_grid
-
-    def create_occupancy_grid(self, pc):
-        # Initialize PointToVoxel generator
-        voxel_generator = PointToVoxel(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
-            num_point_features=3,
-            max_num_voxels=600000,
-            max_num_points_per_voxel=5,
-            device=pc.device
-        )
-        
-        batch_size = pc.shape[0]  # Assume pc is of shape (batch_size, num_points, 3)
-        grid_size = [50, 120, 120] 
+    
+    
+    def calculate_occupancy_with_padding(self, voxel_coords, grid_size=(120, 120, 70)):
+        batch_size = voxel_coords.size(0)
         occupancy_grids = []
 
-        for batch_idx in range(batch_size):
-            pc_single = pc[batch_idx]
-            voxels_tv, indices_tv, num_p_in_vx_tv, _ = voxel_generator.generate_voxel_with_id(pc_single)
+        for b in range(batch_size):
+            # Initialize the occupancy grid with zeros (padding)
+            occupancy_grid = torch.zeros(grid_size, dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
 
-            indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(pc.device)
-            # self.tensor_to_ply(indices_torch, "indices_torch.ply")
-            # 유효한 인덱스 필터링
-            valid = num_p_in_vx_tv.cpu().numpy() > 0
-            indices_torch = indices_torch[valid]
+            # Extract coordinates and clamp to grid size
+            x_coords, y_coords, z_coords = voxel_coords[b].unbind(-1)
+            x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
+            y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
+            z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
 
-            # Occupancy Grid 초기화
-            occupancy_grid = torch.zeros(tuple(grid_size), dtype=torch.float32, device=pc.device, requires_grad=True)
+            # Replace NaN values with zeros
+            x_coords = torch.nan_to_num(x_coords, nan=0.0)
+            y_coords = torch.nan_to_num(y_coords, nan=0.0)
+            z_coords = torch.nan_to_num(z_coords, nan=0.0)
 
+            # Create a tensor of ones to add to the occupancy grid
+            values = torch.ones_like(x_coords, dtype=torch.float64)
 
-            # Occupancy Grid에 점유된 위치 마킹
-            for idx in indices_torch:
-                occupancy_grid[idx[0], idx[1], idx[2]] = 1.0  # 점유된 보셀의 위치를 1로 설정
+            # Flatten the occupancy grid and calculate indices for the 1D flattened tensor
+            occupancy_grid_flat = occupancy_grid.view(-1)
+            indices = (x_coords.long() * grid_size[1] * grid_size[2] +
+                    y_coords.long() * grid_size[2] +
+                    z_coords.long())
+            print("indices", indices.is_leaf)
 
-            # 결과를 리스트에 추가
+            # Scatter add the values to the occupancy grid
+            occupancy_grid_flat.scatter_add(0, indices, values)
+
+            # Reshape back to the original grid shape and add to the list
+            occupancy_grid = occupancy_grid_flat.view(grid_size)
             occupancy_grids.append(occupancy_grid)
 
-        # 리스트를 배치 텐서로 변환
-        occupancy_grids = torch.stack(occupancy_grids)
-        return occupancy_grid
+        # Stack all grids into a batch tensor
+        occupancy_grids = torch.stack(occupancy_grids, dim=0)
 
-
+        return occupancy_grids
+    def calculate_occupancy_alternative(self, voxel_coords):
+        grid_size = (120, 120, 70)
+        batch_size = voxel_coords.size(0)
+        
+        occupancy_grids = []
+        
+        for b in range(batch_size):
+            occupancy_grid = torch.zeros(grid_size, dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
+            
+            x_coords, y_coords, z_coords = voxel_coords[b].unbind(-1)
+            x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
+            y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
+            z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
+            
+            x_coords = torch.nan_to_num(x_coords, nan=0.0)
+            y_coords = torch.nan_to_num(y_coords, nan=0.0)
+            z_coords = torch.nan_to_num(z_coords, nan=0.0)
+            
+            # Create a mask for valid indices and fill the occupancy grid
+            indices = torch.stack([x_coords.long(), y_coords.long(), z_coords.long()], dim=0)
+            # occupancy_grid = occupancy_grid.index_put((indices[0], indices[1], indices[2]), torch.tensor(1.0, dtype=torch.float64, device=voxel_coords.device, requires_grad=True))
+            values = torch.ones(indices.size(1), dtype=torch.float64, device=voxel_coords.device)
+            occupancy_grid.scatter_add(0, indices, values)
+            occupancy_grids.append(occupancy_grid)
+        
+        # Stack all the individual occupancy grids into a batch
+        occupancy_grids = torch.stack(occupancy_grids, dim=0)
+        
+        return occupancy_grids
 
 
     def tensor_to_ply(self, tensor, filename):
@@ -234,16 +272,17 @@ class NSLoss(nn.Module):
         
         # print(f"Preds requires_grad - before voxelize: {preds.requires_grad}")
         # print(f"Preds grad_fn - before voxelize: {preds.grad_fn}")
-
+        # preds.retain_grad()
         gts_voxel = self.voxelize2(gts.float())
         preds_voxel = self.voxelize2(preds.float())
-        self.tensor_to_ply(gts_voxel, "gts_voxel.ply")
+        # self.tensor_to_ply(gts_voxel, "gts_voxel.ply")
         
         # print(f"Preds requires_grad - after voxelize: {preds_voxel.requires_grad}")
         # print(f"Preds grad_fn - after voxelize: {preds_voxel.grad_fn}")
-
-        pred_occu = self.calculate_occupancy(preds_voxel)
-        gts_occu = self.calculate_occupancy(gts_voxel)
+        # preds_voxel.retain_grad()
+        pred_occu = self.calculate_occupancy_with_padding(preds_voxel)
+        gts_occu = self.calculate_occupancy_with_padding(gts_voxel)
+        # pred_occu.retain_grad()
         # save_occupancy_grid_as_ply(gts_occu)
         # print(f"calculate_occupancy requires_grad: {pred_occu.requires_grad}")
         # print(f"calculate_occupancy grad_fn: {pred_occu.grad_fn}")
@@ -253,7 +292,13 @@ class NSLoss(nn.Module):
         
         # print("pred_occu",pred_occu)
 
-        loss1 = self.occupancy_loss(pred_occu, gts_occu).float()
+        # loss1 = self.occupancy_loss(occu_preds, gts_occu).float()
+        loss1 = F.binary_cross_entropy_with_logits(pred_occu, gts_occu, reduction='mean')
+        # print(f"loss1 grad_fn: {loss1.grad_fn}")
+        # print(f"pred_occu grad_fn: {pred_occu.grad_fn}")
+        # print(f"preds_voxel grad_fn: {preds_voxel.grad_fn}")
+        # print(f"preds grad_fn: {preds.grad_fn}")
+
         # print(f"Loss requires_grad: {loss1.requires_grad}")
         # print(f"Loss grad_fn: {loss1.grad_fn}")
         
@@ -262,7 +307,7 @@ class NSLoss(nn.Module):
         logging.info(f"loss2 {loss2}")
         # print("loss1", loss1)
         # print("loss2", loss2)
-        return loss1 + loss2
+        return loss1
     
 
         

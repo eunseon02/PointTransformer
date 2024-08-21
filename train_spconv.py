@@ -59,7 +59,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 256
+        self.batch_size = 2
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -80,7 +80,7 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "spconv_weight"
+        self.weight_folder = "check"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_spconv.txt'
         self.input_shape = (cfg.D, cfg.H, cfg.W)
         torch.cuda.empty_cache()
@@ -244,19 +244,21 @@ class Train():
                 sptensor = self.preprocess(pts)
                 self.optimizer.zero_grad()
                 preds = self.model(sptensor)
-
                 # loss = self.criterion(preds.unsqueeze(0), gt_pts.view(-1, 3).unsqueeze(0))
                 loss = self.criterion(preds, gt_pts)
-
+                # loss = F.binary_cross_entropy_with_logits(occu_preds, self.model.calculate_occupancy(gt_pts), reduction='mean')
+                print(loss)
 
                 loss.backward()
-                # print(f"preds grad: {preds.grad}")
-                # for name, param in self.model.named_parameters():
-                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                #     if param.grad is not None:
-                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                #     else:
-                #         print(f"Layer: {name} | No gradient calculated!")
+                # print(f"preds grad: {occu_preds.grad}")
+                # print(f"loss grad: {loss.grad}")
+
+                for name, param in self.model.named_parameters():
+                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                    if param.grad is not None:
+                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                    else:
+                        print(f"Layer: {name} | No gradient calculated!")
                 # for name, param in self.model.named_parameters():
                 #     if not param.requires_grad:
                 #         print(f"Parameter {name} does not require grad!")
