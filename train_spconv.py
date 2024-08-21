@@ -200,7 +200,46 @@ class Train():
 
         # dense_tensor = sparse_tensor.dense()
         return sparse_tensor
-    
+    def occupancy_grid(self, pc):
+        from spconv.utils import Point2VoxelGPU3d
+        from spconv.pytorch.utils import PointToVoxel
+
+        # Voxel generator
+        gen = Point2VoxelGPU3d(
+            vsize_xyz=[0.05, 0.05, 0.05],
+            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            num_point_features=self.model.num_point_features,
+            max_num_voxels=600000,
+            max_num_points_per_voxel=self.model.max_num_points_per_voxel
+        )
+        
+        batch_size = pc.shape[0]
+        all_voxels, all_indices = [], []
+
+        for batch_idx in range(batch_size):
+            pc_single = pc[batch_idx]
+            pc_single = tv.from_numpy(pc_single.cpu().numpy())
+            voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
+
+            # Check if each voxel has any points, if yes, mark it as occupied (1), otherwise leave it empty (0)
+            occupancy = (num_p_in_vx_tv.cpu().numpy() > 0).astype(float)
+            occupancy = torch.tensor(occupancy, dtype=torch.float32).to(self.device).view(-1, 1)  # shape [N, 1]
+            
+            indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
+
+            batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
+
+            all_voxels.append(occupancy)
+            all_indices.append(indices_combined.int())
+
+        all_voxels = torch.cat(all_voxels, dim=0)
+        all_indices = torch.cat(all_indices, dim=0)
+        
+        # Create SparseConvTensor with occupancy as features
+        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
+        
+        return sparse_tensor    
     # @profileit
     def train_epoch(self, epoch, prev_preds):
         epoch_start_time = time.time()
@@ -248,13 +287,13 @@ class Train():
                 # else:
                 #     print("pts 텐서에 NaN 값이 없습니다.")
                 pts = torch.nan_to_num(pts, nan=0.0)
-                print(pts.shape)
                 sptensor = self.preprocess(pts)
+                gt_occu = self.occupancy_grid(gt_pts)
                 # sys.exit(1)
                 self.optimizer.zero_grad()
-                preds = self.model(sptensor)
+                preds, occu = self.model(sptensor)
                 # loss = self.criterion(preds.unsqueeze(0), gt_pts.view(-1, 3).unsqueeze(0))
-                loss = self.criterion(preds, gt_pts)
+                loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
                 # loss = F.binary_cross_entropy_with_logits(occu_preds, self.model.calculate_occupancy(gt_pts), reduction='mean')
                 # print(loss)
 
@@ -262,12 +301,12 @@ class Train():
                 # print(f"preds grad: {occu_preds.grad}")
                 # print(f"loss grad: {loss.grad}")
 
-                # for name, param in self.model.named_parameters():
-                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                #     if param.grad is not None:
-                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                #     else:
-                #         print(f"Layer: {name} | No gradient calculated!")
+                for name, param in self.model.named_parameters():
+                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                    if param.grad is not None:
+                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                    else:
+                        print(f"Layer: {name} | No gradient calculated!")
                 # for name, param in self.model.named_parameters():
                 #     if not param.requires_grad:
                 #         print(f"Parameter {name} does not require grad!")

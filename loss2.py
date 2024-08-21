@@ -262,7 +262,7 @@ class NSLoss(nn.Module):
         pcd.points = o3d.utility.Vector3dVector(points)
         o3d.io.write_point_cloud(filename, pcd)
 
-    def forward(self, preds, gts):
+    def forward(self, preds, pred_occu, gts, gt_occu):
         chd = chamfer_dist()
         dist1, dist2, idx1, idx2 = chd(preds,gts)
         loss2 = (torch.mean(dist1)) + (torch.mean(dist2))
@@ -273,8 +273,8 @@ class NSLoss(nn.Module):
         # print(f"Preds requires_grad - before voxelize: {preds.requires_grad}")
         # print(f"Preds grad_fn - before voxelize: {preds.grad_fn}")
         # preds.retain_grad()
-        gts_voxel = self.voxelize2(gts.float())
-        preds_voxel = self.voxelize2(preds.float())
+        # gts_voxel = self.voxelize2(gts.float())
+        # preds_voxel = self.voxelize2(preds.float())
         # self.tensor_to_ply(gts_voxel, "gts_voxel.ply")
         
         # print(f"Preds requires_grad - after voxelize: {preds_voxel.requires_grad}")
@@ -286,13 +286,13 @@ class NSLoss(nn.Module):
         # save_occupancy_grid_as_ply(gts_occu)
         # print(f"calculate_occupancy requires_grad: {pred_occu.requires_grad}")
         # print(f"calculate_occupancy grad_fn: {pred_occu.grad_fn}")
-        dist1, dist2, idx1, idx2 = chd(preds_voxel.float(),gts_voxel.float())
-        loss1 = (torch.mean(dist1)) + (torch.mean(dist2))
+        # dist1, dist2, idx1, idx2 = chd(preds_voxel.float(),gts_voxel.float())
+        # loss1 = (torch.mean(dist1)) + (torch.mean(dist2))
         # print("loss1", loss1)
         
         # print("pred_occu",pred_occu)
 
-        # loss1 = self.occupancy_loss(occu_preds, gts_occu).float()
+        loss1 = self.occupancy_loss(gt_occu, pred_occu)
         # loss1 = F.binary_cross_entropy_with_logits(pred_occu, gts_occu, reduction='mean')
         # print(f"loss1 grad_fn: {loss1.grad_fn}")
         # print(f"pred_occu grad_fn: {pred_occu.grad_fn}")
