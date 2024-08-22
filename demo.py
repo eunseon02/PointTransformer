@@ -12,7 +12,7 @@ import open3d as o3d
 import os
 import time
 import argparse
-from model_ import PointCloud3DCNN
+from model_spconv import PointCloud3DCNN
 from torch.utils.data import Dataset, DataLoader
 import cumm.tensorview as tv
 import spconv.pytorch as spconv
@@ -60,9 +60,9 @@ def load_model(model_path):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model', type=str, default='spconv_weight/model_epoch_best_129.pth', metavar='N',
+    parser.add_argument('--model', type=str, default='check/model_epoch_10.pth', metavar='N',
                         help='Path to load model')
-    parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1017.ply", metavar='N',
+    parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1007.ply", metavar='N',
                         help='Path to load data')
     args = parser.parse_args()
     return args
@@ -86,33 +86,47 @@ def preprocess(pc):
         coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
         num_point_features=3,
         max_num_voxels=600000,
-        max_num_points_per_voxel=5
+        max_num_points_per_voxel=3
         )
     
     batch_size = pc.shape[0]
     all_voxels, all_indices = [], []
+    tensors = []
 
     for batch_idx in range(batch_size):
         pc_single = pc[batch_idx]
         pc_single = tv.from_numpy(pc_single.cpu().numpy())
         voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
+        # print(voxels_tv)
 
         voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(device)
         indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(device)
-
-        valid = num_p_in_vx_tv.cpu().numpy() > 0
-        voxels_flatten = voxels_torch.view(-1, 15)[valid]
-        indices_torch = indices_torch[valid]
+        # print(voxels_torch)
+        # mean = voxels_torch.mean()
+        # std = voxels_torch.std()
+        # voxels_torch = (voxels_torch - mean) / std
+        # print(voxels_torch)
+        mean = voxels_torch.mean(dim=1, keepdim=True)  # (batch, 1, 3)
+        voxels_torch = voxels_torch - mean
+        # print(voxels_torch)
+        # valid = num_p_in_vx_tv.cpu().numpy() > 0
+        # voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
+        # indices_torch = indices_torch[valid]
+        voxels_flatten = torch.abs(voxels_torch.view(-1, 3 * 3))
+        # tensor_to_ply(indices_torch, "indices_torch.ply")
 
         batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(device)
         indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
-
+        # tensor = spconv.SparseConvTensor(voxels_flatten, indices_combined, self.input_shape, self.batch_size)
         all_voxels.append(voxels_flatten)
-        all_indices.append(indices_combined)
+        all_indices.append(indices_combined.int())
+        # tensors.append(tensor)
 
     all_voxels = torch.cat(all_voxels, dim=0)
     all_indices = torch.cat(all_indices, dim=0)
     sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, input_shape, batch_size)
+
+    # dense_tensor = sparse_tensor.dense()
     return sparse_tensor
 def occupancy_grid(pc):
     from spconv.utils import Point2VoxelGPU3d
@@ -154,6 +168,26 @@ def occupancy_grid(pc):
     sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, input_shape, batch_size)
     
     return sparse_tensor    
+def save_single_occupancy_grid_as_ply(occupancy_grid, file_name="occupancy_grid.ply"):
+    # Assume occupancy_grid is of shape (batch_size, 1, H, W, D)
+    _, _, H, W, D = occupancy_grid.shape
+    
+    # Extract the occupancy grid for the first batch item
+    grid = occupancy_grid[0, 0]  # shape (H, W, D)
+
+    # Get the indices of the occupied voxels
+    occupied_voxels = torch.nonzero(grid > 0, as_tuple=False).cpu().numpy()
+
+    # Convert to float32 if necessary
+    occupied_voxels = occupied_voxels.astype(np.float32)
+
+    # Create a point cloud object
+    point_cloud = o3d.geometry.PointCloud()
+    point_cloud.points = o3d.utility.Vector3dVector(occupied_voxels)
+
+    # Save the point cloud as a PLY file
+    o3d.io.write_point_cloud(file_name, point_cloud)
+    print(f"Saved occupancy grid to {file_name}")
 def tensor_to_ply(points_tensor, file_path= 'output.ply'):
     points = points_tensor.cpu().numpy()
     
@@ -168,6 +202,35 @@ def tensor_to_ply(points_tensor, file_path= 'output.ply'):
     print(f"Point cloud saved to {file_path}")
 
 
+def calculate_occupancy(coord):
+    offsets = torch.tensor([-3.0, -3.0, -1.0], device=coord.device)  # X, Y, Z offsets
+    voxel_coords = torch.div(
+        coord - offsets, torch.tensor([0.05]).to(coord.device), rounding_mode="trunc"
+    )
+
+    grid_size = (120, 120, 70)
+    batch_size = voxel_coords.size(0)
+
+    occupancy_grid = torch.zeros((batch_size, *grid_size), dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
+    x_coords, y_coords, z_coords = voxel_coords.unbind(-1)
+    x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
+    y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
+    z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
+
+    x_coords = torch.nan_to_num(x_coords, nan=0.0)
+    y_coords = torch.nan_to_num(y_coords, nan=0.0)
+    z_coords = torch.nan_to_num(z_coords, nan=0.0)
+    
+    indices = ((x_coords * grid_size[1] * grid_size[2]) + (y_coords * grid_size[2]) + z_coords).long()
+
+    occupancy_grid_flat = occupancy_grid.view(batch_size, -1)
+    ones = torch.ones(indices.size(), dtype=torch.float64, device=voxel_coords.device)
+    occupancy_grid_flat = occupancy_grid_flat.scatter_add(1, indices, ones)
+    # print("occupancy_grid_flat after scatter_add:", occupancy_grid_flat)
+    occupancy_grid_flat = torch.clamp(occupancy_grid_flat, min=0, max=1)
+    occupancy_grid = occupancy_grid_flat.view(batch_size, *grid_size)
+
+    return occupancy_grid
 
 if __name__ == "__main__":
     args = get_parser()
@@ -195,14 +258,20 @@ if __name__ == "__main__":
         # points = points.view(-1, 3)
         pts = torch.nan_to_num(points, nan=0.0)
         sptensor = preprocess(pts)
-        # gt_occu = occupancy_grid(gt_pts)
+        gt_occu = occupancy_grid(gt_pts)
         # print("pts shape", pts.shape)
 
 
         with torch.no_grad():
-            output = model(sptensor)
+            output, occu = model(sptensor)
+        print("occu", occu.shape)
+        out = calculate_occupancy(output)
+        print(out.shape)
 
+        save_single_occupancy_grid_as_ply(occu, 'occu.ply')
+        save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
         tensor_to_ply(output, 'output.ply')
+
         tensor_to_ply(gt_pts.squeeze(0), 'gts.ply')
         tensor_to_ply(points.squeeze(0), 'points.ply')
         

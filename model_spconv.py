@@ -109,22 +109,22 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU()
         )
+        self.Decoder1 = spconv.SparseSequential(
+            spconv.SubMConv3d(dec_ch[0], self.num_point_features*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
+            nn.BatchNorm1d(self.num_point_features*self.max_num_points_per_voxel, momentum=0.1),
+            nn.ReLU()
+        )
         # self.cls2 = spconv.SparseSequential(
         #     spconv.SubMConv3d(dec_ch[0], 1, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         # )
-        self.occu = spconv.SparseSequential(
-            spconv.ToDense(),
-            nn.Conv3d(16, 16, kernel_size=3, padding=1)
-        )
-        self.conv = nn.Conv3d(16, 1, kernel_size=3, padding=1)
+        self.conv = nn.Conv3d(9, 1, kernel_size=3, padding=1)
         self.dense = spconv.ToDense()
-        self.fc1 = nn.Linear(16,3)
-        self.fc2 = nn.Linear(16,1)
+        self.fc1 = nn.Linear(9,3)
 
         self.loss = NSLoss()
 
     def forward(self, sparse_tensor):
-        # print("input", sparse_tensor)
+        print("input", sparse_tensor.features.shape)
         enc_0 = self.Encoder1(sparse_tensor)
         # print("enc_0", enc_0)
         enc_1 = self.Encoder2(enc_0)
@@ -138,19 +138,22 @@ class PointCloud3DCNN(nn.Module):
 
         
         
-        dec_3 = self.Decoder5(enc_4)
+        dec_4 = self.Decoder5(enc_4)
         # print("dec_3", dec_3)
         # dec_2 = torch.cat((dec_3 + enc_3), dim=0)
-        dec_3 = dec_3 + enc_3
-        dec_2 = self.Decoder4(dec_3)
+        dec_4 = dec_4 + enc_3
+        dec_3 = self.Decoder4(dec_4)
         # print("dec_2", dec_2)
-        dec_2 = dec_2 + enc_2
+        dec_3 = dec_3 + enc_2
         # print("check", check.features.shape)
-        dec_1 = self.Decoder3(dec_2)
+        dec_2 = self.Decoder3(dec_3)
         # print("dec_1", dec_1)
 
-        dec_1 = dec_1 + enc_1
-        dec_0 = self.Decoder2(dec_1)
+        dec_2 = dec_2 + enc_1
+        dec_1 = self.Decoder2(dec_2)
+        print(dec_1.features.shape)
+        dec_0 = self.Decoder1(dec_1)
+        print(dec_0.features.shape)
         occu = self.conv(dec_0.dense())
         coords = self.fc1(dec_0.features)
         if coords.requires_grad:
@@ -165,7 +168,7 @@ class PointCloud3DCNN(nn.Module):
 
         batch_size = preds.batch_size
         output_coords = []
-        max_num_points = 3000
+        max_num_points = 5000
 
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)

@@ -79,7 +79,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 32
+        self.batch_size = 16
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -87,12 +87,12 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset/train'
+        self.train_path = 'dataset2/train'
         self.train_dataset = PointCloudDataset(self.train_path)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
-        self.val_path = 'dataset/valid'
+        self.val_path = 'dataset2/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
@@ -124,7 +124,7 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 60
+        start_epoch = 90
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             # gc.collect()
@@ -210,9 +210,9 @@ class Train():
             mean = voxels_torch.mean(dim=1, keepdim=True)  # (batch, 1, 3)
             voxels_torch = voxels_torch - mean
             # print(voxels_torch)
-            # valid = num_p_in_vx_tv.cpu().numpy() > 0
-            # voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
-            # indices_torch = indices_torch[valid]
+            valid = num_p_in_vx_tv.cpu().numpy() > 0
+            voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
+            indices_torch = indices_torch[valid]
             voxels_flatten = torch.abs(voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel))
             # tensor_to_ply(indices_torch, "indices_torch.ply")
 
@@ -322,6 +322,9 @@ class Train():
                 # sys.exit(1)
                 self.optimizer.zero_grad()
                 preds, occu = self.model(sptensor)
+                save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
+                save_single_occupancy_grid_as_ply(occu, 'occu.ply')
+
                 # loss = self.criterion(preds.unsqueeze(0), gt_pts.view(-1, 3).unsqueeze(0))
                 loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
                 # loss = F.binary_cross_entropy_with_logits(occu_preds, self.model.calculate_occupancy(gt_pts), reduction='mean')
