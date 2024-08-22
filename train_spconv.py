@@ -124,7 +124,7 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 0
+        start_epoch = 50
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             # gc.collect()

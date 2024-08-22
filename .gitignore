@@ -1,6 +1,7 @@
 weight2/
 weight/
 spconv_weight/
+check/
 sample/
 dataset/
 loss_log.txt

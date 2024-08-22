@@ -18,12 +18,12 @@ def display_ply_files(file_path1, file_path2):
     pcd2.paint_uniform_color([0, 0, 1])  # 파란색
 
     # 두 개의 점 구름을 리스트로 묶어 시각화
-    o3d.visualization.draw_geometries([pcd1])
+    o3d.visualization.draw_geometries([pcd1,pcd2])
 
 if __name__ == "__main__":
     # PLY 파일 경로를 지정
-    file_path1 = "indices_torch.ply"
-    file_path2 = "points.ply"
+    file_path1 = "points.ply"
+    file_path2 = "output.ply"
 
     # 두 개의 PLY 파일을 읽어 시각화
     display_ply_files(file_path1, file_path2)
