@@ -310,25 +310,15 @@ class Train():
                 else:
                     pts = pts.repeat_interleave(2, dim=0)
                     pts = pts.view(self.batch_size, -1, 3)
-                # nan_exists = torch.isnan(pts).any()
-                # if nan_exists:
-                #     print("pts 텐서에 NaN 값이 존재합니다.")
-                # else:
-                #     print("pts 텐서에 NaN 값이 없습니다.")
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
                 gt_occu = self.occupancy_grid(gt_pts)
-                # save_single_occupancy_grid_as_ply(gt_occu.dense())
-                # sys.exit(1)
                 self.optimizer.zero_grad()
                 preds, occu = self.model(sptensor)
                 save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 save_single_occupancy_grid_as_ply(occu, 'occu.ply')
 
-                # loss = self.criterion(preds.unsqueeze(0), gt_pts.view(-1, 3).unsqueeze(0))
                 loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                # loss = F.binary_cross_entropy_with_logits(occu_preds, self.model.calculate_occupancy(gt_pts), reduction='mean')
-                # print(loss)
 
                 loss.backward()
 
