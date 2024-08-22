@@ -44,5 +44,5 @@ def check_all_batches(root_dir):
     print(f"Total GT files: {total_gt_files}")
 
 # 예제 사용
-root_dir = 'sample/valid'
+root_dir = 'dataset2/valid'
 check_all_batches(root_dir)

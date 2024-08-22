@@ -165,7 +165,7 @@ class PointCloud3DCNN(nn.Module):
 
         batch_size = preds.batch_size
         output_coords = []
-        max_num_points = 2000
+        max_num_points = 3000
 
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)

@@ -12,7 +12,7 @@ import open3d as o3d
 import os
 import time
 import argparse
-from model_spconv import PointCloud3DCNN
+from model_ import PointCloud3DCNN
 from torch.utils.data import Dataset, DataLoader
 import cumm.tensorview as tv
 import spconv.pytorch as spconv
@@ -60,9 +60,9 @@ def load_model(model_path):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model', type=str, default='check/model_epoch_best_49.pth', metavar='N',
+    parser.add_argument('--model', type=str, default='spconv_weight/model_epoch_best_129.pth', metavar='N',
                         help='Path to load model')
-    parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1007.ply", metavar='N',
+    parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1017.ply", metavar='N',
                         help='Path to load data')
     args = parser.parse_args()
     return args
@@ -86,47 +86,33 @@ def preprocess(pc):
         coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
         num_point_features=3,
         max_num_voxels=600000,
-        max_num_points_per_voxel=3
+        max_num_points_per_voxel=5
         )
     
     batch_size = pc.shape[0]
     all_voxels, all_indices = [], []
-    tensors = []
 
     for batch_idx in range(batch_size):
         pc_single = pc[batch_idx]
         pc_single = tv.from_numpy(pc_single.cpu().numpy())
         voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
-        # print(voxels_tv)
 
         voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(device)
         indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(device)
-        # print(voxels_torch)
-        # mean = voxels_torch.mean()
-        # std = voxels_torch.std()
-        # voxels_torch = (voxels_torch - mean) / std
-        # print(voxels_torch)
-        mean = voxels_torch.mean(dim=1, keepdim=True)  # (batch, 1, 3)
-        voxels_torch = voxels_torch - mean
-        # print(voxels_torch)
-        # valid = num_p_in_vx_tv.cpu().numpy() > 0
-        # voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
-        # indices_torch = indices_torch[valid]
-        voxels_flatten = torch.abs(voxels_torch.view(-1, 3 * 3))
-        # tensor_to_ply(indices_torch, "indices_torch.ply")
+
+        valid = num_p_in_vx_tv.cpu().numpy() > 0
+        voxels_flatten = voxels_torch.view(-1, 15)[valid]
+        indices_torch = indices_torch[valid]
 
         batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(device)
         indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
-        # tensor = spconv.SparseConvTensor(voxels_flatten, indices_combined, self.input_shape, self.batch_size)
+
         all_voxels.append(voxels_flatten)
-        all_indices.append(indices_combined.int())
-        # tensors.append(tensor)
+        all_indices.append(indices_combined)
 
     all_voxels = torch.cat(all_voxels, dim=0)
     all_indices = torch.cat(all_indices, dim=0)
     sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, input_shape, batch_size)
-
-    # dense_tensor = sparse_tensor.dense()
     return sparse_tensor
 def occupancy_grid(pc):
     from spconv.utils import Point2VoxelGPU3d
@@ -209,12 +195,12 @@ if __name__ == "__main__":
         # points = points.view(-1, 3)
         pts = torch.nan_to_num(points, nan=0.0)
         sptensor = preprocess(pts)
-        gt_occu = occupancy_grid(gt_pts)
+        # gt_occu = occupancy_grid(gt_pts)
         # print("pts shape", pts.shape)
 
 
         with torch.no_grad():
-            output, _ = model(sptensor)
+            output = model(sptensor)
 
         tensor_to_ply(output, 'output.ply')
         tensor_to_ply(gt_pts.squeeze(0), 'gts.ply')
