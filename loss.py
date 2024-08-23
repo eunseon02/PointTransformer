@@ -264,6 +264,8 @@ class NSLoss(nn.Module):
 
     def forward(self, preds, pred_occu, gts, gt_occu):
         chd = chamfer_dist()
+        # print("preds", preds.shape)
+        # print("gts", gts.shape)
         dist1, dist2, idx1, idx2 = chd(preds,gts)
         loss2 = (torch.mean(dist1)) + (torch.mean(dist2))
         # loss2 = loss2 *0.001

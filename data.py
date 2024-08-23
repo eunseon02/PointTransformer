@@ -91,7 +91,7 @@ class PointCloudDataset(Dataset):
                 padd = points
             return torch.tensor(padd, dtype=torch.float32)
         except Exception as e:
-            # print(f"Error reading {file_path}: {e}")
+            print(f"Error reading {file_path}: {e}")
             
             # return an empty tensor or handle the error as appropriate
             return None

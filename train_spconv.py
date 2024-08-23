@@ -87,12 +87,12 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset2/train'
+        self.train_path = 'dataset/train'
         self.train_dataset = PointCloudDataset(self.train_path)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
-        self.val_path = 'dataset2/valid'
+        self.val_path = 'dataset/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
@@ -124,7 +124,7 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 160
+        start_epoch = 170
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             # gc.collect()
@@ -199,26 +199,17 @@ class Train():
 
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
-            # print(voxels_torch)
-            # mean = voxels_torch.mean()
-            # std = voxels_torch.std()
-            # voxels_torch = (voxels_torch - mean) / std
-            # print(voxels_torch)
             mean = voxels_torch.mean(dim=1, keepdim=True)  # (batch, 1, 3)
             voxels_torch = voxels_torch - mean
-            # print(voxels_torch)
             valid = num_p_in_vx_tv.cpu().numpy() > 0
             voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
             indices_torch = indices_torch[valid]
             voxels_flatten = torch.abs(voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel))
-            # tensor_to_ply(indices_torch, "indices_torch.ply")
 
             batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
             indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
-            # tensor = spconv.SparseConvTensor(voxels_flatten, indices_combined, self.input_shape, self.batch_size)
             all_voxels.append(voxels_flatten)
             all_indices.append(indices_combined.int())
-            # tensors.append(tensor)
 
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
@@ -320,6 +311,7 @@ class Train():
                 # tensor_to_ply(preds[0], "preds.ply")
 
                 loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
+                print(loss)
                 # print("preds", preds.shape)
                 # print("gt_pts",gt_pts.shape)
                 loss.backward()
@@ -337,7 +329,7 @@ class Train():
                 transformed_preds = []
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                     for i in range(min(self.batch_size, gt_pts.size(0))):
-                        transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                        transformed_pred = self.transform_point_cloud(gt_pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
                         transformed_preds.append(transformed_pred.tolist())   
                         
                         del transformed_pred
@@ -395,10 +387,10 @@ class Train():
                         continue
 
                     pts, gt_pts, lidar_pos, lidar_quat = batch
-                    # if gt_pts.shape[0] != self.batch_size or pts.shape[1] != 2048:
-                    #     # print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
-                    #     pbar.update(1)
-                    #     continue
+                    if gt_pts.shape[0] != self.batch_size:
+                        # print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
+                        pbar.update(1)
+                        continue
                         
                     pts = pts.to(self.device)
                     gt_pts = gt_pts.to(self.device)
@@ -422,7 +414,6 @@ class Train():
                     gt_occu = self.occupancy_grid(gt_pts)
                     preds, occu = self.model(sptensor)
                     loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                    
                     # transform
                     transformed_preds = []
                     if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):

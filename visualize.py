@@ -88,5 +88,5 @@ for idx in range(len(all_pointclouds)):
     vis.poll_events()
     vis.update_renderer()
     
-    time.sleep(0.5)
+    time.sleep(1)
 vis.destroy_window()
