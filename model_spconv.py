@@ -10,7 +10,10 @@ import open3d as o3d
 from config import config as cfg
 from loss import NSLoss
 import cumm
+import logging
 
+logging.basicConfig(filename='loss_log.txt', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 input_shape = (cfg.D, cfg.H, cfg.W)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -174,15 +177,16 @@ class PointCloud3DCNN(nn.Module):
 
         batch_size = preds.batch_size
         output_coords = []
-        max_num_points = 5000
+        max_num_points = max((predicted_coords[(preds.indices[:, 0] == batch_idx)].shape[0] for batch_idx in range(batch_size)))
 
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)
             batch_coords = predicted_coords[batch_mask]
             # print(f"batch_coords: {batch_coords.grad_fn}")
-            
+            logging.info(f"output {batch_coords.shape[0]}")
             if batch_coords.shape[0] > max_num_points:
                 print("output : ", batch_coords.shape[0])
+                
                 batch_coords = batch_coords[:max_num_points]
             
             padding_size = max_num_points - batch_coords.shape[0]
@@ -197,46 +201,6 @@ class PointCloud3DCNN(nn.Module):
 
         output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
         return output
-    
-    def calculate_occupancy(self, coord):
-        offsets = torch.tensor([-3.0, -3.0, -1.0], device=coord.device)  # X, Y, Z offsets
-        voxel_coords = torch.div(
-            coord - offsets, torch.tensor([0.05]).to(coord.device), rounding_mode="trunc"
-        )
-
-        grid_size = (120, 120, 70)
-        batch_size = voxel_coords.size(0)
-        if not voxel_coords.requires_grad:
-            voxel_coords.requires_grad = True
-        
-        occupancy_grid = torch.zeros((batch_size, *grid_size), dtype=torch.float64, device=voxel_coords.device, requires_grad=True)
-        x_coords, y_coords, z_coords = voxel_coords.unbind(-1)
-        x_coords = torch.clamp(x_coords, 0, grid_size[0] - 1)
-        y_coords = torch.clamp(y_coords, 0, grid_size[1] - 1)
-        z_coords = torch.clamp(z_coords, 0, grid_size[2] - 1)
-        x_coords.retain_grad()
-        y_coords.retain_grad()
-        z_coords.retain_grad()
-        
-        x_coords = torch.nan_to_num(x_coords, nan=0.0)
-        y_coords = torch.nan_to_num(y_coords, nan=0.0)
-        z_coords = torch.nan_to_num(z_coords, nan=0.0)
-        
-        x_coords.retain_grad()
-        y_coords.retain_grad()
-        z_coords.retain_grad()
-
-        indices = ((x_coords * grid_size[1] * grid_size[2]) + (y_coords * grid_size[2]) + z_coords).long()
-
-        occupancy_grid_flat = occupancy_grid.view(batch_size, -1)
-        ones = torch.ones(indices.size(), dtype=torch.float64, device=voxel_coords.device)
-        occupancy_grid_flat = occupancy_grid_flat.scatter_add(1, indices, ones)
-        # print("occupancy_grid_flat after scatter_add:", occupancy_grid_flat)
-        occupancy_grid_flat = torch.clamp(occupancy_grid_flat, min=0, max=1)
-        occupancy_grid = occupancy_grid_flat.view(batch_size, *grid_size)
-        occupancy_grid.retain_grad()
-    
-        return occupancy_grid
 
     def process_pointclouds(self, pc):
         np.random.seed(50051)

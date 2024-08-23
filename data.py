@@ -84,6 +84,7 @@ class PointCloudDataset(Dataset):
             data = plydata['vertex'].data
             points = np.vstack([data['x'], data['y'], data['z']]).T
             if points.shape[0] < self.point_cnt:
+                print("2048 in")
                 padd = np.zeros((self.point_count, 3))
                 padd[:points.shape[0], :] = points
             else:

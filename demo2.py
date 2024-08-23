@@ -79,7 +79,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 16
+        self.batch_size = 1
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -124,31 +124,11 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 160
+        start_epoch = 90
         for epoch in range(start_epoch, self.epochs):
-            train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
-            # gc.collect()
-            torch.cuda.empty_cache()
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            # gc.collect()
             torch.cuda.empty_cache()
-            # save snapeshot
-            if (epoch + 1) % self.snapshot_interval == 0:
-                self._snapshot(epoch + 1)
-                if train_loss < best_loss:
-                    best_loss = train_loss
-                    self._snapshot('best_{}'.format(epoch))
-            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
-            self.log(log_message)
-        # finish all epoch
-        self._snapshot(epoch + 1)
-        if train_loss < best_loss:
-            best_loss = train_loss
-            self._snapshot('best')
-        self.train_hist['total_time'].append(time.time() - start_time)
-        print("Avg one epoch time: %.2f, total %d epochs time: %.2f" % (np.mean(self.train_hist['per_epoch_time']),
-                                                                        self.epochs, self.train_hist['total_time'][0]))
-        print("Training finish!... save training results")
+
         
 
     def transform_point_cloud(self, point_cloud, pos, quat):
@@ -266,29 +246,22 @@ class Train():
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
         
         return sparse_tensor    
-    # @profileit
-    def train_epoch(self, epoch, prev_preds):
+
+    def validation_epoch(self, epoch,prev_preds):
         epoch_start_time = time.time()
         loss_buf = []
-        self.model.train()
+        # self.model.eval()
         preds = None
         transformed_preds = []
-        with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-            for iter, batch  in enumerate(self.train_loader):
+        with torch.no_grad():
+        # with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
+            for iter, batch  in enumerate(self.val_loader):
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
-                    pbar.update(1)
                     continue
-                
-                pts, gt_pts, lidar_pos, lidar_quat = batch
-                # tensor_to_ply(pts, f"pts_{iter}.ply")
-                # tensor_to_ply(gt_pts, f"gt_{iter}.ply")
 
-                if gt_pts.shape[0] != self.batch_size:
-                    print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
-                    pbar.update(1)
-                    continue
-                
+                pts, gt_pts, lidar_pos, lidar_quat = batch
+
                 pts = pts.to(self.device)
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
@@ -297,178 +270,55 @@ class Train():
                 # concat
                 if prev_preds is not None:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
-                    # print(f"prev_preds-before cat : ", prev_preds[:5])
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                    # print(f"prev_preds-before cat : ", prev_preds[:5])
                     del prev_preds_tensor
                     # gc.collect()
                     torch.cuda.empty_cache()
                 else:
                     pts = pts.repeat_interleave(2, dim=0)
                     pts = pts.view(self.batch_size, -1, 3)
+                    
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
                 gt_occu = self.occupancy_grid(gt_pts)
                 pts_occu = self.occupancy_grid(pts)
-                self.optimizer.zero_grad()
+
                 preds, occu = self.model(sptensor)
-                # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
-                # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
-                # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
-                # tensor_to_ply(pts[0], "pts.ply")
-                # tensor_to_ply(preds[0], "preds.ply")
-
+                save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
+                save_single_occupancy_grid_as_ply(occu, 'occu.ply')
+                save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
+                tensor_to_ply(pts[0], "pts.ply")
+                tensor_to_ply(preds[0], "preds.ply")
                 loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                # print("preds", preds.shape)
-                # print("gt_pts",gt_pts.shape)
-                loss.backward()
-
-                # for name, param in self.model.named_parameters():
-                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                #     if param.grad is not None:
-                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                #     else:
-                #         print(f"Layer: {name} | No gradient calculated!")
-                self.optimizer.step()
-                loss_buf.append(loss.item())
-                
+                print("loss", loss)
                 # transform
                 transformed_preds = []
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                    for i in range(min(self.batch_size, gt_pts.size(0))):
+                    for i in range(min(self.batch_size, preds.size(0))):
                         transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                        transformed_preds.append(transformed_pred.tolist())   
-                        
+                        transformed_preds.append(transformed_pred.tolist())
                         del transformed_pred
                         # gc.collect()
                         torch.cuda.empty_cache()
-                        
-                # # for debugging
-                # pts = pts.view(self.batch_size, -1, 3)
-                # if not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                #     for i in range(min(self.batch_size, pts.size(0))):
-                #         transformed_pred = self.transform_point_cloud(pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                #         transformed_preds.append(transformed_pred.tolist())   
-                #         # tensor_to_ply(transformed_preds, f"transformed_{iter}")
-                #         del transformed_pred
-                #         # gc.collect()
-                #         torch.cuda.empty_cache()
-                # transformed_preds = torch.tensor(transformed_preds).to(self.device)  
-                # tensor_to_ply(transformed_preds, f"transformed_{iter}.ply")
 
-                                
+                loss_buf.append(loss.item())
+                
                 # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
                 # gc.collect()
                 torch.cuda.empty_cache()
-                pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
-                pbar.update(1)
             # gc.collect()
             torch.cuda.empty_cache()
             
         torch.cuda.synchronize()
-        # memory logging
         allocated_final = torch.cuda.memory_allocated()
         reserved_final = torch.cuda.memory_reserved()
-        logging.info(f"Epoch {epoch}:")
-        logging.info(f"train -Memory allocated after deleting tensor and emptying cache: {allocated_final / (1024 ** 2):.2f} MB")
-        logging.info(f"train - Reserved after deleting tensor and emptying cache: {reserved_final / (1024 ** 2):.2f} MB")
-
         epoch_time = time.time() - epoch_start_time
-        self.train_hist['per_epoch_time'].append(epoch_time)
-        self.train_hist['train_loss'].append(np.mean(loss_buf))
-        return np.mean(loss_buf), epoch_time, transformed_preds
-    
-    def validation_epoch(self, epoch,prev_preds):
-        epoch_start_time = time.time()
-        loss_buf = []
-        self.model.eval()
-        preds = None
-        transformed_preds = []
-        with torch.no_grad():
-            with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-                for iter, batch  in enumerate(self.val_loader):
-                    if batch is None:
-                        print(f"Skipping batch {iter} because it is None")
-                        pbar.update(1)
-                        continue
-
-                    pts, gt_pts, lidar_pos, lidar_quat = batch
-                    # if gt_pts.shape[0] != self.batch_size or pts.shape[1] != 2048:
-                    #     # print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
-                    #     pbar.update(1)
-                    #     continue
-                        
-                    pts = pts.to(self.device)
-                    gt_pts = gt_pts.to(self.device)
-                    lidar_pos = lidar_pos.to(self.device)
-                    lidar_quat = lidar_quat.to(self.device)
-                    
-                    # concat
-                    if prev_preds is not None:
-                        prev_preds = [torch.as_tensor(p) for p in prev_preds]
-                        prev_preds_tensor = torch.stack(prev_preds).to(self.device)
-                        pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                        del prev_preds_tensor
-                        # gc.collect()
-                        torch.cuda.empty_cache()
-                    else:
-                        pts = pts.repeat_interleave(2, dim=0)
-                        pts = pts.view(self.batch_size, -1, 3)
-                        
-                    pts = torch.nan_to_num(pts, nan=0.0)
-                    sptensor = self.preprocess(pts)
-                    gt_occu = self.occupancy_grid(gt_pts)
-                    preds, occu = self.model(sptensor)
-                    loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                    
-                    # transform
-                    transformed_preds = []
-                    if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                        for i in range(min(self.batch_size, preds.size(0))):
-                            transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                            transformed_preds.append(transformed_pred.tolist())
-                            del transformed_pred
-                            # gc.collect()
-                            torch.cuda.empty_cache()
-
-                    loss_buf.append(loss.item())
-                    
-                    # empty memory
-                    del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
-                    # gc.collect()
-                    torch.cuda.empty_cache()
-                    pbar.set_postfix(val_loss=np.mean(loss_buf) if loss_buf else 0)
-                    pbar.update(1)
-                # gc.collect()
-                torch.cuda.empty_cache()
-                
-            torch.cuda.synchronize()
-            allocated_final = torch.cuda.memory_allocated()
-            reserved_final = torch.cuda.memory_reserved()
-            logging.info(f"valid -Memory allocated after deleting tensor and emptying cache: {allocated_final / (1024 ** 2):.2f} MB")
-            logging.info(f"valid - Reserved after deleting tensor and emptying cache: {reserved_final / (1024 ** 2):.2f} MB")
-
-            epoch_time = time.time() - epoch_start_time
-            self.val_hist['per_epoch_time'].append(epoch_time)
-            self.val_hist['val_loss'].append(np.mean(loss_buf))
-            val_loss = np.mean(loss_buf) if loss_buf else 0
-            return val_loss, transformed_preds, 
-
-
-    def _snapshot(self, epoch):
-        if not os.path.exists(self.weight_folder):
-            os.makedirs(self.weight_folder) 
-        snapshot_filename = os.path.join(self.weight_folder, f"model_epoch_{epoch}.pth")
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict()
-        }, snapshot_filename)
-        print(f"Snapshot saved to {snapshot_filename}")
-
-
+        self.val_hist['per_epoch_time'].append(epoch_time)
+        self.val_hist['val_loss'].append(np.mean(loss_buf))
+        val_loss = np.mean(loss_buf) if loss_buf else 0
+        return val_loss, transformed_preds, 
         
     def _load_pretrain(self, pretrain):
         # Load checkpoint
@@ -499,12 +349,9 @@ def get_parser():
     args = parser.parse_args()
     return args
 
-def main_worker(args):
+
+
+if __name__ == "__main__":
+    args = get_parser()
     trainer = Train(args)  
     trainer.run()
-
-def main():
-    args = get_parser()
-    main_worker(args) 
-if __name__ == "__main__":
-    main()
