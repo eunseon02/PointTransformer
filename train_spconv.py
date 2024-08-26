@@ -92,7 +92,7 @@ class Train():
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
-        self.val_path = 'dataset/valid'
+        self.val_path = 'dataset2/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
@@ -100,8 +100,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "check"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_spconv.txt'
+        self.weight_folder = "weight"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
         self.input_shape = (50, 120, 120)
         
         torch.cuda.empty_cache()
@@ -124,7 +124,7 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 170
+        start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             # gc.collect()
