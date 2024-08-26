@@ -75,7 +75,7 @@ class PointCloudDataset(Dataset):
              
         lidar_pos, lidar_quat = self.read_csv(data_file_path, csv_file)
         # print("getitem", data_pointcloud.shape)
-        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat 
+        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat, data_file_path
 
     def read_ply(self, file_path):
         # print("ply", file_path)

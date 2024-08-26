@@ -7,7 +7,6 @@ from torch.autograd import Variable
 from tqdm import tqdm
 import numpy as np
 from config import config as cfg
-from loss import ChamferLoss
 from data import PointCloudDataset
 # import open3d as o3d
 import os
@@ -79,7 +78,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 1
+        self.batch_size = 2
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -87,12 +86,12 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset2/train'
+        self.train_path = 'dataset/train'
         self.train_dataset = PointCloudDataset(self.train_path)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
-        self.val_path = 'dataset2/valid'
+        self.val_path = 'dataset/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
@@ -260,7 +259,8 @@ class Train():
                     print(f"Skipping batch {iter} because it is None")
                     continue
 
-                pts, gt_pts, lidar_pos, lidar_quat = batch
+                pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
+                print("data_file_path", data_file_path)
 
                 pts = pts.to(self.device)
                 gt_pts = gt_pts.to(self.device)
@@ -284,14 +284,14 @@ class Train():
                 gt_occu = self.occupancy_grid(gt_pts)
                 pts_occu = self.occupancy_grid(pts)
 
-                preds, occu = self.model(sptensor)
+                preds, occu, probs, cm = self.model(sptensor)
                 save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
                 tensor_to_ply(pts[0], "pts.ply")
                 tensor_to_ply(preds[0], "preds.ply")
-                loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                print("loss", loss)
+                # loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
+                # print("loss", loss)
                 # transform
                 transformed_preds = []
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
@@ -302,13 +302,11 @@ class Train():
                         # gc.collect()
                         torch.cuda.empty_cache()
 
-                loss_buf.append(loss.item())
+                # loss_buf.append(loss.item())
                 
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
-                # gc.collect()
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds
                 torch.cuda.empty_cache()
-            # gc.collect()
             torch.cuda.empty_cache()
             
         torch.cuda.synchronize()

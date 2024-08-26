@@ -7,7 +7,7 @@ from tqdm import tqdm
 import numpy as np
 from config import config as cfg
 from loss import ChamferLoss
-from dataloader import PointCloudDataset
+from data import PointCloudDataset
 import open3d as o3d
 import os
 import time
@@ -49,7 +49,7 @@ def _load_pretrain(model, pretrain):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model', type=str, default='check/model_epoch_10.pth', metavar='N',
+    parser.add_argument('--model', type=str, default='check/model_epoch_best_279.pth', metavar='N',
                         help='Path to load model')
     parser.add_argument('--data', type=str, default="/root/raibo_arm/raisimGymTorch/algo/PointTransFormer/dataset/train/batch_0/pts_1007.ply", metavar='N',
                         help='Path to load data')
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     input_shape = (50, 120, 120)
 with torch.no_grad():   
     for iter, batch  in enumerate(val_loader):
-            # model.eval()
+            model.train()
             pts, gt_pts, lidar_pos, lidar_quat = batch
             pts = pts.to(device)
             gt_pts = gt_pts.to(device)

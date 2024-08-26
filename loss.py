@@ -11,6 +11,8 @@ import torch
 import spconv.pytorch as spconv
 from spconv.pytorch.utils import PointToVoxel
 import cumm.tensorview as tv
+import ctypes
+cuda_kernel = ctypes.CDLL("./get_target.so")
 
 logging.basicConfig(filename='loss_log.txt', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -147,12 +149,23 @@ class NSLoss(nn.Module):
 
             all_indices = torch.cat(all_indices, dim=0).cpu()
             target_coords = all_indices[:, :3]
-            target = torch.zeros(cm[idx].size(0), 1)
-            for target_coord in target_coords:
-                matching_indices = (cm[idx] == target_coord).all(dim=1)
-                target[matching_indices]=1    
+            output = torch.zeros(cm[idx].size(0), 1)
 
-        return target
+            # matching_indices = (cm[idx].cpu() == target_coords.unsqueeze(1)).all(dim=2).any(dim=0)
+            # output[matching_indices]=1    
+            threads_per_block = 256
+            blocks_per_grid = (cm[idx].shape[0] + threads_per_block - 1) // threads_per_block
+
+            cuda_kernel.get_target_kernel(
+                ctypes.c_void_p(cm[idx].data_ptr()),
+                ctypes.c_void_p(target_coords.data_ptr()),
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_int(cm[idx].shape[0]),
+                ctypes.c_int(target_coords.shape[0]),
+                ctypes.c_int(cm[idx].shape[1])
+    )
+
+        return output
     
 
 
@@ -165,10 +178,10 @@ class NSLoss(nn.Module):
         # print("loss1", loss1)
         # print("loss2", loss2)
         cls_losses = torch.tensor(0.0, requires_grad=True)
-        cm = [tensor.cpu() for tensor in cm]
+        # cm = [tensor.cpu() for tensor in cm]
         for idx in range(len(probs)):
             # print(self.vsizes[idx], probs[idx].shape)
-            gt_probs = self.get_target(gts.cpu(), cm, idx).to(preds.device)
+            gt_probs = self.get_target(gts, cm, idx).to(preds.device)
             # gt_probs = gt_probs.to(preds.device)
             cls_loss = self.cls_loss(probs[idx], gt_probs.squeeze())
             cls_losses = cls_losses + cls_loss
