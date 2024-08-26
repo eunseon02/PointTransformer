@@ -30,6 +30,7 @@ from loss import NSLoss
 import gc
 import logging
 from collections import OrderedDict
+import pickle
 
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
@@ -101,6 +102,9 @@ class Train():
         self.weight_folder = "weight2"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
         self.input_shape = (50, 120, 120)
+        
+        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
+        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 3.0])
         
         torch.cuda.empty_cache()
         torch.backends.cudnn.benchmark = True
@@ -213,10 +217,9 @@ class Train():
 
         return sparse_tensor
     
-    def occupancy_grid(self, pc):
+    def occupancy_grid_(self, pc):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
-
         # Voxel generator
         gen = Point2VoxelGPU3d(
             vsize_xyz=[0.05, 0.05, 0.05],
@@ -251,6 +254,86 @@ class Train():
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
         
         return sparse_tensor    
+    
+
+    def occupancy_grid(self, pc, grid_size, voxel_size, device='cpu'):
+
+        batch_size = pc.shape[0]
+
+        # Initialize the occupancy grid with zeros
+
+        occupancy_grid = torch.zeros((batch_size, *grid_size), dtype=torch.float32)
+
+        for batch_idx in range(batch_size):
+
+            pc_single = pc[batch_idx]
+            pc_single = pc_single[:, [2, 1, 0]]
+
+
+            # Filtering point clouds (remove O.O.D points)
+            filtered_pc = self.filter_point_cloud(pc_single, self.min_coord_range_xyz, self.max_coord_range_xyz)
+
+            # Consider the minimum value as 0 index.
+            voxel_indices = torch.div(filtered_pc - self.min_coord_range_xyz.to(filtered_pc.device) - 1e-4, voxel_size.to(filtered_pc.device)).long()
+
+            # Increment the occupancy grid at the corresponding indices
+            occupancy_grid[batch_idx, voxel_indices[:, 0], voxel_indices[:, 1], voxel_indices[:, 2]] = 1.0
+
+        occupancy_grid = occupancy_grid.unsqueeze(-1).to(device)
+        occupancy_grid = occupancy_grid.permute(0, 4, 1, 2, 3)
+        # print("occupancy_grid", occupancy_grid.shape)
+        # save_single_occupancy_grid_as_ply(occupancy_grid, 'occupancy_grid.ply')
+
+        return occupancy_grid
+
+    def filter_point_cloud(self, pc, min_coord_range_xyz, max_coord_range_xyz):
+        """
+        Filter out points from the point cloud that are outside the specified coordinate range.
+
+        Args:
+            pc (torch.Tensor): Point cloud data of shape (N, 3).
+            min_coord_range_xyz (torch.Tensor): Minimum coordinate values for x, y, z.
+            max_coord_range_xyz (torch.Tensor): Maximum coordinate values for x, y, z.
+
+        Returns:
+            torch.Tensor: Filtered point cloud with points within the specified range.
+        """
+        # Create masks for each coordinate
+        mask_x = (pc[..., 0] >= min_coord_range_xyz[0]) & (pc[..., 0] <= max_coord_range_xyz[0])
+        mask_y = (pc[..., 1] >= min_coord_range_xyz[1]) & (pc[..., 1] <= max_coord_range_xyz[1])
+        mask_z = (pc[..., 2] >= min_coord_range_xyz[2]) & (pc[..., 2] <= max_coord_range_xyz[2])
+
+        # filter redundant points which allocated in the (0,0,0) coordinate
+        mask_center = torch.logical_not((pc[:] == torch.Tensor([0, 0, 0]).to(pc.device)).all(dim=1))
+
+
+        # Combine masks to get the final mask
+        mask = mask_x & mask_y & mask_z & mask_center
+
+        # Apply the mask to filter out points that are out of range
+        filtered_pc = pc[mask]
+
+        return filtered_pc
+        
+    def get_target(self, occupancy_grid, cm, idx):
+        batch_size = occupancy_grid.size(0)
+        n = cm.size(1)
+
+        x_indices = cm[:, :, 0].to(occupancy_grid.device)
+        y_indices = cm[:, :, 1].to(occupancy_grid.device)
+        z_indices = cm[:, :, 2].to(occupancy_grid.device)
+
+        X, Y, Z = occupancy_grid.shape[2], occupancy_grid.shape[3], occupancy_grid.shape[4]
+
+        x_indices = torch.clamp(x_indices, min=0, max=X-1)
+        y_indices = torch.clamp(y_indices, min=0, max=Y-1)
+        z_indices = torch.clamp(z_indices, min=0, max=Z-1)
+
+        batch_indices = torch.arange(batch_size).view(-1, 1).expand(-1, n).to(occupancy_grid.device)
+        occupancy_values = occupancy_grid[batch_indices, 0, x_indices, y_indices, z_indices]
+        return occupancy_values
+                
+
     @profileit
     def train_epoch(self, epoch, prev_preds):
         epoch_start_time = time.time()
@@ -265,7 +348,7 @@ class Train():
                     pbar.update(1)
                     continue
                 
-                pts, gt_pts, lidar_pos, lidar_quat = batch
+                pts, gt_pts, lidar_pos, lidar_quat, filename = batch
                 # tensor_to_ply(pts, f"pts_{iter}.ply")
                 # tensor_to_ply(gt_pts, f"gt_{iter}.ply")
 
@@ -279,6 +362,27 @@ class Train():
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
                 
+                output_directory = "train_"
+                file_path = os.path.join(output_directory, f'{iter}.pkl')
+
+                ## get_target
+                if os.path.exists(file_path):
+                    with open(file_path, 'rb') as f:
+                        occupancy_grids = pickle.load(f)
+                    print("File loaded successfully.")
+                else:
+                    print(f"File '{file_path}' does not exist.")
+                    occupancy_grids = []
+                    torch.tensor([5, 14, 14], dtype=torch.float32)
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                    os.makedirs(output_directory, exist_ok=True)
+                    with open(file_path, 'wb') as f:
+                        pickle.dump(occupancy_grids, f)
+                
+                # print("occupancy_grids", occupancy_grids[0].shape)
                 # concat
                 if prev_preds is not None:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
@@ -294,14 +398,22 @@ class Train():
                     pts = pts.view(self.batch_size, -1, 3)
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
-                gt_occu = self.occupancy_grid(gt_pts)
+                gt_occu = self.occupancy_grid_(gt_pts)
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
-
-                loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, cm)
+                
+                ## get_target
+                idx = 0
+                gt_probs = []
+                for idx in range(len(probs)):
+                    # tensor_to_ply(cm[idx][0], "cm.ply")
+                    gt_prob = self.get_target(occupancy_grids[idx], cm[idx], idx)
+                    gt_probs.append(gt_prob)
+                
+                loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)
 
                 loss.backward()
 
@@ -320,7 +432,7 @@ class Train():
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                     for i in range(min(self.batch_size, gt_pts.size(0))):
                         transformed_pred = self.transform_point_cloud(gt_pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                        transformed_preds.append(transformed_pred.tolist())   
+                        transformed_preds.append(transformed_pred)   
                         
                         del transformed_pred
                         # gc.collect()
@@ -387,13 +499,33 @@ class Train():
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
                     
+                    
+                output_directory = "valid_"
+                file_path = os.path.join(output_directory, f'{iter}.pkl')
+                
+                ## get_target
+                if os.path.exists(file_path):
+                    with open(file_path, 'rb') as f:
+                        occupancy_grids = pickle.load(f)
+                    print("File loaded successfully.")
+                else:
+                    print(f"File '{file_path}' does not exist.")
+                    occupancy_grids = []
+                    torch.tensor([5, 14, 14], dtype=torch.float32)
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                    os.makedirs(output_directory, exist_ok=True)
+                    with open(file_path, 'wb') as f:
+                        pickle.dump(occupancy_grids, f)
+                    
                     # concat
                     if prev_preds is not None:
                         prev_preds = [torch.as_tensor(p) for p in prev_preds]
                         prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                         pts = torch.cat((prev_preds_tensor, pts), dim=1)
                         del prev_preds_tensor
-                        # gc.collect()
                         torch.cuda.empty_cache()
                     else:
                         pts = pts.repeat_interleave(2, dim=0)
@@ -401,17 +533,25 @@ class Train():
                         
                     pts = torch.nan_to_num(pts, nan=0.0)
                     sptensor = self.preprocess(pts)
-                    gt_occu = self.occupancy_grid(gt_pts)
+                    gt_occu = self.occupancy_grid_(gt_pts)
                     preds, occu, probs, cm = self.model(sptensor)
 
-                    loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, cm)
+                    ## get_target
+                    idx = 0
+                    gt_probs = []
+                    for idx in range(len(probs)):
+                        # tensor_to_ply(cm[idx][0], "cm.ply")
+                        gt_prob = self.get_target(occupancy_grids[idx], cm[idx], idx)
+                        gt_probs.append(gt_prob)
+                    
+                    loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)                    
                     
                     # transform
                     transformed_preds = []
                     if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                         for i in range(min(self.batch_size, preds.size(0))):
                             transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                            transformed_preds.append(transformed_pred.tolist())
+                            transformed_preds.append(transformed_pred)
                             del transformed_pred
                             # gc.collect()
                             torch.cuda.empty_cache()

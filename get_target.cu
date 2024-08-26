@@ -14,6 +14,5 @@ extern "C" __global__ void get_target_kernel(
     }
     if (match) {
         output[idx] = 1;
-        break;
     }
 }

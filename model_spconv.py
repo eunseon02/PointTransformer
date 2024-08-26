@@ -146,29 +146,33 @@ class PointCloud3DCNN(nn.Module):
         dec_3 = self.Decoder5(enc_4)
         feat_cls5 = self.cls5(dec_3) # 5 x 14 x 14
         pred_prob = F.softmax(feat_cls5.features, 1)[:, 1]
+        cm_, pred_prob = self.cls_postprocess(feat_cls5.indices, pred_prob)
         probs.append(pred_prob)
-        cm.append(feat_cls5.indices[:, :3])
+        cm.append(cm_)
 
         dec_3 = dec_3 + enc_3
         dec_2 = self.Decoder4(dec_3)
         feat_cls4 = self.cls4(dec_2) # 11 x 29 x 29
         pred_prob = F.softmax(feat_cls4.features, 1)[:, 1]
+        cm_, pred_prob = self.cls_postprocess(feat_cls4.indices, pred_prob)
         probs.append(pred_prob)
-        cm.append(feat_cls4.indices[:, :3])
+        cm.append(cm_)
         
         dec_2 = dec_2 + enc_2
         dec_1 = self.Decoder3(dec_2)
         feat_cls3 = self.cls3(dec_1) # 24 x 59 x 59
         pred_prob = F.softmax(feat_cls3.features, 1)[:, 1]
+        cm_, pred_prob = self.cls_postprocess(feat_cls3.indices, pred_prob)
         probs.append(pred_prob)
-        cm.append(feat_cls3.indices[:, :3])
+        cm.append(cm_)
 
         dec_1 = dec_1 + enc_1
         dec_0 = self.Decoder2(dec_1)
         feat_cls2 = self.cls2(dec_0) # 50 x 120 x 120
         pred_prob = F.softmax(feat_cls2.features, 1)[:, 1]
+        cm_, pred_prob = self.cls_postprocess(feat_cls2.indices, pred_prob)
         probs.append(pred_prob)
-        cm.append(feat_cls2.indices[:, :3])
+        cm.append(cm_)
         
         occu = self.conv(dec_0.dense())
         coords = self.fc1(dec_0.features)
@@ -179,7 +183,43 @@ class PointCloud3DCNN(nn.Module):
             coords.retain_grad()
             
         return coords, occu, probs, cm
+    def cls_postprocess(self, feat_indices, pred_prob):
+        batch_indices = feat_indices[:, 0]
+        unique_batches = torch.unique(batch_indices)
 
+        cm_batch = []
+        pred_prob_batch = []
+
+        # 각 배치에 대해 그룹화
+        for b in unique_batches:
+            batch_mask = (batch_indices == b)
+            
+            # 각 배치에 대해 [n, 3] 형태로 인덱스 추가
+            cm_batch.append(feat_indices[batch_mask, 1:])
+            
+            # 각 배치에 대해 [n, 1] 형태로 확률 추가
+            pred_prob_batch.append(pred_prob[batch_mask].unsqueeze(-1))
+
+        # 각 배치별로 최대 포인트 개수를 계산
+        max_points = max([t.size(0) for t in cm_batch])
+
+        # 각 배치를 패딩하여 동일한 크기로 맞춤
+        cm_batch_padded = []
+        pred_prob_batch_padded = []
+
+        for cm, prob in zip(cm_batch, pred_prob_batch):
+            # cm과 pred_prob를 각각 패딩
+            cm_padded = F.pad(cm, (0, 0, 0, max_points - cm.size(0)), value=0)  # [n, 3] -> [max_points, 3]
+            prob_padded = F.pad(prob, (0, 0, 0, max_points - prob.size(0)), value=0)  # [n, 1] -> [max_points, 1]
+            
+            cm_batch_padded.append(cm_padded)
+            pred_prob_batch_padded.append(prob_padded)
+
+        # 리스트를 텐서로 스택
+        cm_batch = torch.stack(cm_batch_padded)  # [batch_size, max_points, 3]
+        pred_prob_batch = torch.stack(pred_prob_batch_padded)  # [batch_size, max_points, 1]
+
+        return cm_batch, pred_prob_batch
     def postprocess(self, preds, predicted_coords):
         import torch.nn.functional as F
 

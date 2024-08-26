@@ -26,4 +26,4 @@ def plot_ply(filename):
     plt.show()
 
 # Example usage
-plot_ply("indices_torch.ply")
+plot_ply("occupancy_grid.ply")

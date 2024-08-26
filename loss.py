@@ -9,7 +9,6 @@ import logging
 
 import torch
 import spconv.pytorch as spconv
-from spconv.pytorch.utils import PointToVoxel
 import cumm.tensorview as tv
 import ctypes
 cuda_kernel = ctypes.CDLL("./get_target.so")
@@ -148,7 +147,7 @@ class NSLoss(nn.Module):
                 all_indices.append(indices_combined.int())
 
             all_indices = torch.cat(all_indices, dim=0).cpu()
-            target_coords = all_indices[:, :3]
+            target_coords = all_indices[:, 1:]
             output = torch.zeros(cm[idx].size(0), 1)
 
             # matching_indices = (cm[idx].cpu() == target_coords.unsqueeze(1)).all(dim=2).any(dim=0)
@@ -163,13 +162,12 @@ class NSLoss(nn.Module):
                 ctypes.c_int(cm[idx].shape[0]),
                 ctypes.c_int(target_coords.shape[0]),
                 ctypes.c_int(cm[idx].shape[1])
-    )
+            )
 
         return output
-    
+   
 
-
-    def forward(self, preds, pred_occu, gts, gt_occu, probs, cm):
+    def forward(self, preds, pred_occu, gts, gt_occu, probs, gt_probs):
         chd = chamfer_dist()
         dist1, dist2, idx1, idx2 = chd(preds,gts)
         cham_loss = (torch.mean(dist1)) + (torch.mean(dist2))
@@ -178,12 +176,8 @@ class NSLoss(nn.Module):
         # print("loss1", loss1)
         # print("loss2", loss2)
         cls_losses = torch.tensor(0.0, requires_grad=True)
-        # cm = [tensor.cpu() for tensor in cm]
         for idx in range(len(probs)):
-            # print(self.vsizes[idx], probs[idx].shape)
-            gt_probs = self.get_target(gts, cm, idx).to(preds.device)
-            # gt_probs = gt_probs.to(preds.device)
-            cls_loss = self.cls_loss(probs[idx], gt_probs.squeeze())
+            cls_loss = self.cls_loss(probs[idx].squeeze(-1), gt_probs[idx].to(preds.device))
             cls_losses = cls_losses + cls_loss
         cls_losses = cls_losses/ len(probs)
         

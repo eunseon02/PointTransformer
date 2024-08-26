@@ -40,12 +40,6 @@ class PointCloudDataset(Dataset):
                         continue
                     print(len(gt_files))
                     self.total_len +=len(gt_files)
-                    # for gt_file, data_file in zip(gt_files, data_files):
-                    #     self.batch.append(([data_file], [gt_file], csv_file, batch_dir))
-                    #     print(len(data_file), len(gt_file), csv_file, batch_dir)
-                
-                    # gt_files.append(gt_files)
-                    # data_files.append(data_files)
                     self.batch.append((data_files[:], gt_files[:], csv_file, batch_dir))
                     # data_files, gt_files, csv_file, batch_dir = self.batch[0]
                     # print(len(data_files), len(gt_files), csv_file, batch_dir)
@@ -53,7 +47,7 @@ class PointCloudDataset(Dataset):
                 print(len(self.batch_dirs))
     def __len__(self):
         return self.total_len 
-        # return len(self.batches) * len(self.batches[0][0])
+
     def __getitem__(self, idx):
         batch_idx = idx % len(self.batch_dirs)
         file_idx = idx // len(self.batch_dirs)
@@ -71,7 +65,7 @@ class PointCloudDataset(Dataset):
         data_pointcloud = self.read_ply(data_file_path)
         gt_pointcloud = self.read_ply(gt_file_path)
         lidar_pos, lidar_quat = self.read_csv(data_file_path, csv_file)
-        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat, data_file_path
+        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat, data_files[file_idx]
 
     def read_ply(self, file_path):
         # print("ply", file_path)
