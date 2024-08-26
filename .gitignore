@@ -11,3 +11,5 @@ train_log_spconv.txt
 train_log2.txt
 model_epoch_best_129.pth
 train_/
+*.ply
+*.profile
