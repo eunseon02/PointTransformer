@@ -90,12 +90,12 @@ class Train():
         self.train_path = 'dataset/train'
         self.train_dataset = PointCloudDataset(self.train_path)
         print(f"Total train dataset length: {len(self.train_dataset)}")
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=4, pin_memory=True)
         
         self.val_path = 'dataset2/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
-        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
+        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=4, pin_memory=True)
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
@@ -257,7 +257,7 @@ class Train():
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
         
         return sparse_tensor    
-    # @profileit
+    @profileit
     def train_epoch(self, epoch, prev_preds):
         epoch_start_time = time.time()
         loss_buf = []
