@@ -33,7 +33,7 @@ import logging
 from collections import OrderedDict
 
 def tensor_to_ply(tensor, filename):
-    print("tensor", tensor.shape)
+    # print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
     points = points.astype(np.float64)
     # points=  points[0]
@@ -78,7 +78,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 2
+        self.batch_size = 3
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -86,16 +86,14 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset/train'
-        self.train_dataset = PointCloudDataset(self.train_path)
-        print(f"Total train dataset length: {len(self.train_dataset)}")
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
         self.val_path = 'dataset/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
-        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
-        
+        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
+        if len(self.val_dataset.batch_dirs) != self.batch_size:
+            print(len(self.val_dataset.batch_dirs))
+            raise RuntimeError('wrong batch_size')
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
@@ -285,11 +283,11 @@ class Train():
                 pts_occu = self.occupancy_grid(pts)
 
                 preds, occu, probs, cm = self.model(sptensor)
-                save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
-                save_single_occupancy_grid_as_ply(occu, 'occu.ply')
-                save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
-                tensor_to_ply(pts[0], "pts.ply")
-                tensor_to_ply(preds[0], "preds.ply")
+                # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
+                # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
+                # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
+                # tensor_to_ply(pts[0], "pts.ply")
+                # tensor_to_ply(preds[0], "preds.ply")
                 # loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
                 # print("loss", loss)
                 # transform

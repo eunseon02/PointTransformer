@@ -15,67 +15,63 @@ class PointCloudDataset(Dataset):
         self.sub_region = 6.0
         self.point_cnt = 2048
         self.csv_files = []
-        self.data_files = []
-        self.gt_files = []
         self.csv_data_list = []
+        
+        batch_dirs = sorted(os.listdir(root_dir))
+        self.batch_dirs = [os.path.join(root_dir, d) for d in batch_dirs]
+        print("batch_dirs", len(self.batch_dirs))
+        self.total_len = 0
         self.batches = []
-        self.batch_dir_list = []
-        for batch_folder in sorted(os.listdir(root_dir)):
-            print(batch_folder)
-            batch_dir = os.path.join(root_dir, batch_folder)
-            print(root_dir)
-            # print(batch_dir)
-            self.batch_dir_list.extend(batch_dir)
+        for batch_dir in self.batch_dirs:
+            print("batch_dir", batch_dir)
             if os.path.isdir(batch_dir):
                 csv_file_pattern = os.path.join(batch_dir, 'delta_pose*.csv')
                 csv_files = sorted(glob.glob(csv_file_pattern))
                 
+                self.batch = []
+                data_files = []
+                gt_files = []
                 for csv_file in csv_files:
-                    csv_data = pd.read_csv(csv_file)
-                    sorted_filenames = csv_data['filename'].tolist()
-
-                    # 알파벳 순서대로 정렬
                     gt_files = sorted([f for f in os.listdir(batch_dir) if f.endswith('_gt.ply')])
                     data_files = sorted([f for f in os.listdir(batch_dir) if f.endswith('.ply') and not f.endswith('_gt.ply')])
 
                     if len(gt_files) != len(data_files):
                         print(f"Warning: Mismatch in the number of GT files and data files in {batch_dir}")
                         continue
-
-                    self.gt_files.extend(gt_files)
-                    self.data_files.extend(data_files)
-                    self.batches.append((data_files, gt_files, csv_file, batch_dir))
+                    print(len(gt_files))
+                    self.total_len +=len(gt_files)
+                    # for gt_file, data_file in zip(gt_files, data_files):
+                    #     self.batch.append(([data_file], [gt_file], csv_file, batch_dir))
+                    #     print(len(data_file), len(gt_file), csv_file, batch_dir)
+                
+                    # gt_files.append(gt_files)
+                    # data_files.append(data_files)
+                    self.batch.append((data_files[:], gt_files[:], csv_file, batch_dir))
+                    # data_files, gt_files, csv_file, batch_dir = self.batch[0]
+                    # print(len(data_files), len(gt_files), csv_file, batch_dir)
+                self.batches.append(self.batch)
+                print(len(self.batch_dirs))
     def __len__(self):
-        return len(self.data_files)
+        return self.total_len 
         # return len(self.batches) * len(self.batches[0][0])
-
     def __getitem__(self, idx):
-        if idx >= self.__len__():
-            idx = idx % self.__len__()
-        batch_size = len(self.batches[0][0])
-        batch_idx = idx // batch_size
-        file_idx = idx % batch_size
-        data_files, gt_files, csv_file, batch_dir = self.batches[batch_idx]
-        if file_idx >= len(data_files) or file_idx >= len(gt_files):
-            return self.__getitem__(idx + 1)
-        
+        batch_idx = idx % len(self.batch_dirs)
+        batch = self.batches[batch_idx]
+        file_idx = idx // len(self.batch_dirs)
+        # print(len(batch[0][0]))
+        if file_idx >= (len(batch[0][0])):
+            raise IndexError(f"idx = {idx} : file_idx {file_idx} out of range for batch size {len(batch)}")
+
+        data_files, gt_files, csv_file, batch_dir = batch[0]
         
         data_file_path = os.path.join(batch_dir, data_files[file_idx])
         gt_file_path = os.path.join(batch_dir, gt_files[file_idx])
-        # print("check : ",data_file_path ,gt_file_path)
+
         data_pointcloud = self.read_ply(data_file_path)
-        if data_pointcloud is None:
-        # Skip to the next index if the current file is invalid
-            if idx + 1 < self.__len__():
-                return self.__getitem__(idx + 1)
-            else:
-                # Return some default value or handle the end of the dataset
-                raise StopIteration("No more valid data files")
         gt_pointcloud = self.read_ply(gt_file_path)
-             
+        # print(data_file_path, csv_files)
         lidar_pos, lidar_quat = self.read_csv(data_file_path, csv_file)
-        # print("getitem", data_pointcloud.shape)
-        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat
+        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat, data_file_path
 
     def read_ply(self, file_path):
         # print("ply", file_path)
