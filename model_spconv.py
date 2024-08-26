@@ -10,14 +10,21 @@ import open3d as o3d
 from config import config as cfg
 from loss import NSLoss
 import cumm
-import logging
-
-logging.basicConfig(filename='loss_log.txt', level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+import torch.nn.functional as F
 
 input_shape = (cfg.D, cfg.H, cfg.W)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+def tensor_to_ply(tensor, filename):
+    print("tensor", tensor.shape)
+    points = tensor.cpu().detach().numpy()
+    points = points.astype(np.float64)
+    # points=  points[0]
+    if points.shape[1] != 3:
+        raise ValueError(f"Expected point cloud data with shape (n, 3), but got {points.shape}")
 
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    o3d.io.write_point_cloud(filename, pcd)
 # def numpy_to_open3d_point_cloud(points):
 #     pcd = o3d.geometry.PointCloud()
 #     pcd.points = o3d.utility.Vector3dVector(points)
@@ -79,9 +86,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
         )
-        # self.cls5 = spconv.SparseSequential(
-        #     spconv.SubMConv3d(dec_ch[3], 1, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
-        # )
+        self.cls5 = spconv.SparseSequential(
+            spconv.SubMConv3d(dec_ch[3], 3, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
+        )
         self.Decoder4 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[3], dec_ch[2], kernel_size=3, indice_key="spconv4"),
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
@@ -91,7 +98,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.cls4 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[2], 1, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
+            spconv.SubMConv3d(dec_ch[2], 3, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
         )
         self.Decoder3 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[2], dec_ch[1], kernel_size=3, indice_key="spconv3"),
@@ -101,9 +108,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU()
         )
-        # self.cls3 = spconv.SparseSequential(
-        #     spconv.SubMConv3d(dec_ch[1], 1, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
-        # )
+        self.cls3 = spconv.SparseSequential(
+            spconv.SubMConv3d(dec_ch[1], 3, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
+        )
         self.Decoder2 = spconv.SparseSequential(
             spconv.SparseInverseConv3d(dec_ch[1], dec_ch[0], kernel_size=3, indice_key="spconv2"),
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
@@ -112,15 +119,9 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU()
         )
-        # self.Decoder1 = spconv.SparseSequential(
-        #     spconv.SubMConv3d(dec_ch[0], self.num_point_features*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
-        #     nn.BatchNorm1d(self.num_point_features*self.max_num_points_per_voxel, momentum=0.1),
-        #     nn.ReLU()
-        # )
-        # self.cls2 = spconv.SparseSequential(
-        #     spconv.SubMConv3d(dec_ch[0], 1, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
-        # )
-
+        self.cls2 = spconv.SparseSequential(
+            spconv.SubMConv3d(dec_ch[0], 3, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
+        )
         self.occu = spconv.SparseSequential(
             spconv.ToDense(),
             nn.Conv3d(16, 16, kernel_size=3, padding=1)
@@ -133,36 +134,42 @@ class PointCloud3DCNN(nn.Module):
         self.loss = NSLoss()
 
     def forward(self, sparse_tensor):
-        # print("input", sparse_tensor.features.shape)
+        probs = []
+        cm = []
+
         enc_0 = self.Encoder1(sparse_tensor)
-        # print("enc_0", enc_0)
         enc_1 = self.Encoder2(enc_0)
-        # print("enc_1", enc_1)
         enc_2 = self.Encoder3(enc_1)
-        # print("enc_2", enc_2)
         enc_3 = self.Encoder4(enc_2)
-        # print("enc_3", enc_3)
         enc_4 = self.Encoder5(enc_3)
-        # print("enc_4", enc_4)
 
-        
-        
-        dec_4 = self.Decoder5(enc_4)
-        # print("dec_3", dec_3)
-        # dec_2 = torch.cat((dec_3 + enc_3), dim=0)
-        dec_4 = dec_4 + enc_3
-        dec_3 = self.Decoder4(dec_4)
-        # print("dec_2", dec_2)
-        dec_3 = dec_3 + enc_2
-        # print("check", check.features.shape)
-        dec_2 = self.Decoder3(dec_3)
-        # print("dec_1", dec_1)
+        dec_3 = self.Decoder5(enc_4)
+        feat_cls5 = self.cls5(dec_3) # 5 x 14 x 14
+        pred_prob = F.softmax(feat_cls5.features, 1)[:, 1]
+        probs.append(pred_prob)
+        cm.append(feat_cls5.indices[:, :3])
 
-        dec_2 = dec_2 + enc_1
-        dec_0 = self.Decoder2(dec_2)
-        # print(dec_1.features.shape)
-        # dec_0 = self.Decoder1(dec_1)
-        # print(dec_0.features.shape)
+        dec_3 = dec_3 + enc_3
+        dec_2 = self.Decoder4(dec_3)
+        feat_cls4 = self.cls4(dec_2) # 11 x 29 x 29
+        pred_prob = F.softmax(feat_cls4.features, 1)[:, 1]
+        probs.append(pred_prob)
+        cm.append(feat_cls4.indices[:, :3])
+        
+        dec_2 = dec_2 + enc_2
+        dec_1 = self.Decoder3(dec_2)
+        feat_cls3 = self.cls3(dec_1) # 24 x 59 x 59
+        pred_prob = F.softmax(feat_cls3.features, 1)[:, 1]
+        probs.append(pred_prob)
+        cm.append(feat_cls3.indices[:, :3])
+
+        dec_1 = dec_1 + enc_1
+        dec_0 = self.Decoder2(dec_1)
+        feat_cls2 = self.cls2(dec_0) # 50 x 120 x 120
+        pred_prob = F.softmax(feat_cls2.features, 1)[:, 1]
+        probs.append(pred_prob)
+        cm.append(feat_cls2.indices[:, :3])
+        
         occu = self.conv(dec_0.dense())
         coords = self.fc1(dec_0.features)
         if coords.requires_grad:
@@ -170,8 +177,9 @@ class PointCloud3DCNN(nn.Module):
         coords = self.postprocess(dec_0, coords)
         if coords.requires_grad:
             coords.retain_grad()
-        return coords, occu
-    
+            
+        return coords, occu, probs, cm
+
     def postprocess(self, preds, predicted_coords):
         import torch.nn.functional as F
 
@@ -183,10 +191,9 @@ class PointCloud3DCNN(nn.Module):
             batch_mask = (preds.indices[:, 0] == batch_idx)
             batch_coords = predicted_coords[batch_mask]
             # print(f"batch_coords: {batch_coords.grad_fn}")
-            logging.info(f"output {batch_coords.shape[0]}")
+            
             if batch_coords.shape[0] > max_num_points:
                 print("output : ", batch_coords.shape[0])
-                
                 batch_coords = batch_coords[:max_num_points]
             
             padding_size = max_num_points - batch_coords.shape[0]

@@ -7,7 +7,6 @@ from torch.autograd import Variable
 from tqdm import tqdm
 import numpy as np
 from config import config as cfg
-from loss import ChamferLoss
 from data import PointCloudDataset
 # import open3d as o3d
 import os
@@ -87,20 +86,20 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset/train'
+        self.train_path = 'dataset2/train'
         self.train_dataset = PointCloudDataset(self.train_path)
         print(f"Total train dataset length: {len(self.train_dataset)}")
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=4, pin_memory=True)
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
         self.val_path = 'dataset2/valid'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
-        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=4, pin_memory=True)
+        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight"
+        self.weight_folder = "check"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
         self.input_shape = (50, 120, 120)
         
@@ -127,11 +126,10 @@ class Train():
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
-            # gc.collect()
             torch.cuda.empty_cache()
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            # gc.collect()
             torch.cuda.empty_cache()
+
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
                 self._snapshot(epoch + 1)
@@ -195,7 +193,6 @@ class Train():
             pc_single = pc[batch_idx]
             pc_single = tv.from_numpy(pc_single.cpu().numpy())
             voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
-            # print(voxels_tv)
 
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
@@ -215,8 +212,8 @@ class Train():
         all_indices = torch.cat(all_indices, dim=0)
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
 
-        # dense_tensor = sparse_tensor.dense()
         return sparse_tensor
+    
     def occupancy_grid(self, pc):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
@@ -238,7 +235,6 @@ class Train():
             pc_single = tv.from_numpy(pc_single.cpu().numpy())
             voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
 
-            # Check if each voxel has any points, if yes, mark it as occupied (1), otherwise leave it empty (0)
             occupancy = (num_p_in_vx_tv.cpu().numpy() > 0).astype(float)
             occupancy = torch.tensor(occupancy, dtype=torch.float32).to(self.device).view(-1, 1)  # shape [N, 1]
             
@@ -253,7 +249,6 @@ class Train():
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
         
-        # Create SparseConvTensor with occupancy as features
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
         
         return sparse_tensor    
@@ -301,19 +296,14 @@ class Train():
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
                 gt_occu = self.occupancy_grid(gt_pts)
-                pts_occu = self.occupancy_grid(pts)
+
                 self.optimizer.zero_grad()
-                preds, occu = self.model(sptensor)
+                preds, occu, probs, cm = self.model(sptensor)
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
-                # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
-                # tensor_to_ply(pts[0], "pts.ply")
-                # tensor_to_ply(preds[0], "preds.ply")
 
-                loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                print(loss)
-                # print("preds", preds.shape)
-                # print("gt_pts",gt_pts.shape)
+                loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, cm)
+
                 loss.backward()
 
                 # for name, param in self.model.named_parameters():
@@ -414,6 +404,7 @@ class Train():
                     gt_occu = self.occupancy_grid(gt_pts)
                     preds, occu = self.model(sptensor)
                     loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
+                    
                     # transform
                     transformed_preds = []
                     if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
