@@ -78,7 +78,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 3
+        self.batch_size = len(self.val_dataset.batch_dirs)
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -87,13 +87,13 @@ class Train():
             self._load_pretrain(args.model_path)
         
         
-        self.val_path = 'dataset/valid'
+        self.val_path = 'dataset/train'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
         if len(self.val_dataset.batch_dirs) != self.batch_size:
             print(len(self.val_dataset.batch_dirs))
-            raise RuntimeError('wrong batch_size')
+            raise RuntimeError('Wrong batch_size')
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
@@ -255,6 +255,10 @@ class Train():
             for iter, batch  in enumerate(self.val_loader):
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
+                    continue
+                
+                if gt_pts.shape[0] != self.batch_size:
+                    # print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     continue
 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch

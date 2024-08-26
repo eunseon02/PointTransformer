@@ -56,20 +56,20 @@ class PointCloudDataset(Dataset):
         # return len(self.batches) * len(self.batches[0][0])
     def __getitem__(self, idx):
         batch_idx = idx % len(self.batch_dirs)
-        batch = self.batches[batch_idx]
         file_idx = idx // len(self.batch_dirs)
-        # print(len(batch[0][0]))
+        batch = self.batches[batch_idx]
+        
         if file_idx >= (len(batch[0][0])):
             raise IndexError(f"idx = {idx} : file_idx {file_idx} out of range for batch size {len(batch)}")
 
         data_files, gt_files, csv_file, batch_dir = batch[0]
+        # print(len(data_files), len(gt_files), csv_file, batch_dir)
         
         data_file_path = os.path.join(batch_dir, data_files[file_idx])
         gt_file_path = os.path.join(batch_dir, gt_files[file_idx])
 
         data_pointcloud = self.read_ply(data_file_path)
         gt_pointcloud = self.read_ply(gt_file_path)
-        # print(data_file_path, csv_files)
         lidar_pos, lidar_quat = self.read_csv(data_file_path, csv_file)
         return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat, data_file_path
 
@@ -116,7 +116,7 @@ class PointCloudDataset(Dataset):
         row = df[df['filename'] == file_path]
 
         if row.empty:
-            # print(f"No data found for file name: {file_path}")
+            print(f"No data found for file name: {file_path}")
             return np.zeros(3, dtype=np.float32), np.array([1, 0, 0, 0], dtype=np.float32)
         else:
             # print(row)
