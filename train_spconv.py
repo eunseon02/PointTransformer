@@ -171,7 +171,6 @@ class Train():
 
         transformed_pc = transformed_pc_homo[:, :3]
         del point_cloud, ones, pc_homo, transformation_matrix_torch, transformed_pc_homo
-        torch.cuda.empty_cache()
         return transformed_pc
     
     def preprocess(self, pc):
@@ -189,7 +188,6 @@ class Train():
         
         batch_size = pc.shape[0]
         all_voxels, all_indices = [], []
-        tensors = []
 
         for batch_idx in range(batch_size):
             pc_single = pc[batch_idx]
