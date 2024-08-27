@@ -10,14 +10,15 @@ from torch.nn.utils.rnn import pad_sequence
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class PointCloudDataset(Dataset):
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, batch_dirs):
         self.root_dir = root_dir
         self.sub_region = 6.0
         self.point_cnt = 2048
         self.csv_files = []
         self.csv_data_list = []
         
-        batch_dirs = sorted(os.listdir(root_dir))
+        if batch_dirs is None:
+            batch_dirs = sorted(os.listdir(root_dir))
         self.batch_dirs = [os.path.join(root_dir, d) for d in batch_dirs]
         print("batch_dirs", len(self.batch_dirs))
         self.total_len = 0
@@ -98,6 +99,7 @@ class PointCloudDataset(Dataset):
         # print(f"reading {csv_file_path}")
         df = pd.read_csv(csv_file_path)
         file_path = file_path.replace("dataset/", '')
+        file_path = file_path.replace("sample/", '')
 
         df['delta_quat_w'] = df['delta_quat_w'].apply(self.convert_to_float)
         df['delta_quat_x'] = df['delta_quat_x'].apply(self.convert_to_float)

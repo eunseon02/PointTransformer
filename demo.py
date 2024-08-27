@@ -92,7 +92,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 16
+        self.batch_size = 1
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -101,8 +101,9 @@ class Train():
             self._load_pretrain(args.model_path)
         
         self.ply_file = "preds.ply"
-        self.val_path = 'dataset/train'
-        self.val_dataset = PointCloudDataset(self.val_path)
+        self.val_path = 'sample/train'
+        self.val_paths = ['batch_2']
+        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
         if len(self.val_dataset.batch_dirs) != self.batch_size:
@@ -126,8 +127,9 @@ class Train():
         self.model.train()
         prev_preds_val = None
 
-        start_epoch = 90
+        start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
+            print(epoch)
             prev_preds_val = self.demo(epoch, prev_preds_val)
 
     def tensorboard_launcher(self, points, step, color, tag):
@@ -248,8 +250,9 @@ class Train():
         transformed_preds = []
         with torch.no_grad():
             for iter, batch  in enumerate(self.val_loader):
-                print("iter", iter)
+                # print("iter", iter)
                 pts, gt_pts, lidar_pos, lidar_quat = batch
+    
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     continue
@@ -279,8 +282,12 @@ class Train():
                 pts_occu = self.occupancy_grid_(pts)
 
                 preds, occu, probs, cm = self.model(sptensor)
-                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "reconstrunction")
-                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
+                if iter ==1:
+                    print("save tensorboard")
+                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction")
+                    self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT")
+                # writer.add_scalar("example_scalar", 0.5, 0)
+
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')

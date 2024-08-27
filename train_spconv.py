@@ -98,13 +98,13 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset/train'
-        self.train_dataset = PointCloudDataset(self.train_path)
+        self.train_path = 'sample/train'
+        self.train_dataset = PointCloudDataset(self.train_path, None)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
         
-        self.val_path = 'dataset/valid'
-        self.val_dataset = PointCloudDataset(self.val_path)
+        self.val_path = 'sample/valid'
+        self.val_dataset = PointCloudDataset(self.val_path, None)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
         
@@ -151,9 +151,9 @@ class Train():
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
-            writer.add_scalar("Loss/train", train_loss, epoch)
+            # writer.add_scalar("Loss/train", train_loss, epoch)
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            writer.add_scalar("Loss/valid", train_loss, epoch)
+            # writer.add_scalar("Loss/valid", train_loss, epoch)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -389,15 +389,18 @@ class Train():
                 if os.path.exists(file_path):
                     with open(file_path, 'rb') as f:
                         occupancy_grids = pickle.load(f)
-                    # print("File loaded successfully.")
+                    print("File loaded successfully.")
+                    if occupancy_grids[0].size(0) != self.batch_size:
+                        print("error")
                 else:
-                    # print(f"File '{file_path}' does not exist.")
+                    print(f"File '{file_path}' does not exist.")
                     occupancy_grids = []
-                    torch.tensor([5, 14, 14], dtype=torch.float32)
+                    # torch.tensor([5, 14, 14], dtype=torch.float32)
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                    print(occupancy_grids.shape)
                     os.makedirs(output_directory, exist_ok=True)
                     with open(file_path, 'wb') as f:
                         pickle.dump(occupancy_grids, f)
@@ -420,6 +423,9 @@ class Train():
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
+                print("iter", iter)
+                # if iter == 1:
+                #     print("tensorboard_launcher")
                 self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "reconstrunction")
                 self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
 
@@ -520,11 +526,11 @@ class Train():
                     if os.path.exists(file_path):
                         with open(file_path, 'rb') as f:
                             occupancy_grids = pickle.load(f)
-                        # print("File loaded successfully.")
+                        print("File loaded successfully.")
                     else:
-                        # print(f"File '{file_path}' does not exist.")
+                        print(f"File '{file_path}' does not exist.")
                         occupancy_grids = []
-                        torch.tensor([5, 14, 14], dtype=torch.float32)
+                        # torch.tensor([5, 14, 14], dtype=torch.float32)
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
