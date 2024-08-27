@@ -41,11 +41,7 @@ from torch.multiprocessing import Process
 BASE_LOGDIR = "./logs" 
 writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
 
-def visualize_ply(ply_file_path):
-    point_cloud = o3d.io.read_point_cloud(ply_file_path)
-    print(f"Loaded PLY file: {ply_file_path}")
-    print(point_cloud)
-    o3d.visualization.draw_geometries([point_cloud])
+
 def tensor_to_ply(tensor, filename):
     # print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
@@ -104,7 +100,7 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        
+        self.ply_file = "preds.ply"
         self.val_path = 'dataset/train'
         self.val_dataset = PointCloudDataset(self.val_path)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
@@ -117,9 +113,15 @@ class Train():
         
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
+        
+    def visualize_ply(self, ply_file_path):
+        point_cloud = o3d.io.read_point_cloud(ply_file_path)
+        print(f"Loaded PLY file: {ply_file_path}")
+        print(point_cloud)
+        o3d.visualization.draw_geometries([point_cloud])
 
     def run(self):
-        print('Training start!!')
+        print('start!!')
 
         self.model.train()
         prev_preds_val = None
@@ -128,13 +130,15 @@ class Train():
         for epoch in range(start_epoch, self.epochs):
             prev_preds_val = self.demo(epoch, prev_preds_val)
 
-    def tensorboard_launcher(self, points, step):
+    def tensorboard_launcher(self, points, step, color, tag):
         points = occupancy_grid_to_coords(points[0])
+        num_points = points.shape[0]
+        colors = torch.tensor(color).repeat(num_points, 1)
         writer.add_3d(
-        "visualize",
+        tag,
         {
-            "vertex_positions": points.float() # (N, 3)
-
+            "vertex_positions": points.float(), # (N, 3)
+            "vertex_colors": colors.float()  # (N, 3)
         },
         step)
     def transform_point_cloud(self, point_cloud, pos, quat):
@@ -243,8 +247,8 @@ class Train():
         preds = None
         transformed_preds = []
         with torch.no_grad():
-        # with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
             for iter, batch  in enumerate(self.val_loader):
+                print("iter", iter)
                 pts, gt_pts, lidar_pos, lidar_quat = batch
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
@@ -275,15 +279,17 @@ class Train():
                 pts_occu = self.occupancy_grid_(pts)
 
                 preds, occu, probs, cm = self.model(sptensor)
-                self.tensorboard_launcher(occu, iter)
-                self.tensorboard_launcher(gt_occu.dense(), iter)
+                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "reconstrunction")
+                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
                 tensor_to_ply(pts[0], "pts.ply")
                 tensor_to_ply(preds[0], "preds.ply")
-                visualize_ply("preds.ply")
-
+                self.ply_file = "preds.ply"
+                # visualize_ply("preds.ply")
+                # visualize_process = Process(target=trainer.visualize_ply, args=(self.ply_file,))
+                # visualize_process.start()
 
                 # transform
                 transformed_preds = []
@@ -329,13 +335,3 @@ if __name__ == "__main__":
     args = get_parser()
     trainer = Train(args)  
     trainer.run()
-    
-    # model_process = mp.Process(target=trainer.run)
-    visualize_process = Process(target=visualize_ply, args=("preds.ply",))
-
-
-    # model_process.start()
-    visualize_process.start()
-    
-    # model_process.join()
-    # visualize_process.join()
