@@ -18,8 +18,8 @@ import cumm.tensorview as tv
 import sys
 from model_spconv import PointCloud3DCNN
 from torch.utils.data import Dataset, DataLoader
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+# import matplotlib.pyplot as plt
+# from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.transform import Rotation as R
 import cProfile
 import pstats
@@ -37,9 +37,16 @@ from os.path import join
 import open3d as o3d
 from open3d.visualization.tensorboard_plugin import summary
 from open3d.visualization.tensorboard_plugin.util import to_dict_batch
+from torch.multiprocessing import Process
+
 BASE_LOGDIR = "./logs" 
 writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
 
+def visualize_ply(ply_file_path):
+    point_cloud = o3d.io.read_point_cloud(ply_file_path)
+    print(f"Loaded PLY file: {ply_file_path}")
+    print(point_cloud)
+    o3d.visualization.draw_geometries([point_cloud])
 def tensor_to_ply(tensor, filename):
     # print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
@@ -90,7 +97,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 9
+        self.batch_size = 16
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -117,24 +124,14 @@ class Train():
         torch.backends.cudnn.enabled = True
 
     def run(self):
-        self.train_hist = {
-            'train_loss': [],
-            'val_loss': [],
-            'per_epoch_time': [],
-            'total_time': []
-        }
-        self.val_hist = {'per_epoch_time': [], 'val_loss': []}
-        best_loss = 1000000000
         print('Training start!!')
-        start_time = time.time()
 
         self.model.train()
-        prev_preds = None
         prev_preds_val = None
 
         start_epoch = 90
         for epoch in range(start_epoch, self.epochs):
-            val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
+            prev_preds_val = self.demo(epoch, prev_preds_val)
 
     def tensorboard_launcher(self, points, step):
         points = occupancy_grid_to_coords(points[0])
@@ -145,7 +142,6 @@ class Train():
 
         },
         step)
-
     def transform_point_cloud(self, point_cloud, pos, quat):
         """
         Transform point cloud to world frame using position and quaternion.
@@ -167,8 +163,6 @@ class Train():
         transformed_pc = transformed_pc_homo[:, :3]
         del point_cloud, ones, pc_homo, transformation_matrix_torch, transformed_pc_homo
         return transformed_pc
-    
-    
     def preprocess(self, pc):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
@@ -247,7 +241,7 @@ class Train():
         
         return sparse_tensor    
 
-    def validation_epoch(self, epoch,prev_preds):
+    def demo(self, epoch, prev_preds):
         epoch_start_time = time.time()
         loss_buf = []
         # self.model.eval()
@@ -291,10 +285,11 @@ class Train():
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
-                # tensor_to_ply(pts[0], "pts.ply")
-                # tensor_to_ply(preds[0], "preds.ply")
-                # loss = self.criterion(preds, occu, gt_pts, gt_occu.dense())
-                # print("loss", loss)
+                tensor_to_ply(pts[0], "pts.ply")
+                tensor_to_ply(preds[0], "preds.ply")
+                visualize_ply("preds.ply")
+
+
                 # transform
                 transformed_preds = []
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
@@ -303,18 +298,8 @@ class Train():
                         transformed_preds.append(transformed_pred.tolist())
                         del transformed_pred
 
-                # loss_buf.append(loss.item())
-                
-                # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds            
-        torch.cuda.synchronize()
-        allocated_final = torch.cuda.memory_allocated()
-        reserved_final = torch.cuda.memory_reserved()
-        epoch_time = time.time() - epoch_start_time
-        self.val_hist['per_epoch_time'].append(epoch_time)
-        self.val_hist['val_loss'].append(np.mean(loss_buf))
-        val_loss = np.mean(loss_buf) if loss_buf else 0
-        return val_loss, transformed_preds, 
+        return transformed_preds
         
     def _load_pretrain(self, pretrain):
         # Load checkpoint
@@ -349,3 +334,13 @@ if __name__ == "__main__":
     args = get_parser()
     trainer = Train(args)  
     trainer.run()
+    
+    # model_process = mp.Process(target=trainer.run)
+    visualize_process = Process(target=visualize_ply, args=("preds.ply",))
+
+
+    # model_process.start()
+    visualize_process.start()
+    
+    # model_process.join()
+    # visualize_process.join()
