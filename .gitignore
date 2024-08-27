@@ -16,3 +16,4 @@ valid_/
 *.profile
 logs/
 _pycache_/
+train_log/
