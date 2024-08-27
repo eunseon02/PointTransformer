@@ -348,7 +348,7 @@ class Train():
                     pbar.update(1)
                     continue
                 
-                pts, gt_pts, lidar_pos, lidar_quat, filename = batch
+                pts, gt_pts, lidar_pos, lidar_quat = batch
                 # tensor_to_ply(pts, f"pts_{iter}.ply")
                 # tensor_to_ply(gt_pts, f"gt_{iter}.ply")
 
@@ -500,25 +500,25 @@ class Train():
                     lidar_quat = lidar_quat.to(self.device)
                     
                     
-                output_directory = "valid_"
-                file_path = os.path.join(output_directory, f'{iter}.pkl')
-                
-                ## get_target
-                if os.path.exists(file_path):
-                    with open(file_path, 'rb') as f:
-                        occupancy_grids = pickle.load(f)
-                    print("File loaded successfully.")
-                else:
-                    print(f"File '{file_path}' does not exist.")
-                    occupancy_grids = []
-                    torch.tensor([5, 14, 14], dtype=torch.float32)
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
-                    os.makedirs(output_directory, exist_ok=True)
-                    with open(file_path, 'wb') as f:
-                        pickle.dump(occupancy_grids, f)
+                    output_directory = "valid_"
+                    file_path = os.path.join(output_directory, f'{iter}.pkl')
+                    
+                    ## get_target
+                    if os.path.exists(file_path):
+                        with open(file_path, 'rb') as f:
+                            occupancy_grids = pickle.load(f)
+                        print("File loaded successfully.")
+                    else:
+                        print(f"File '{file_path}' does not exist.")
+                        occupancy_grids = []
+                        torch.tensor([5, 14, 14], dtype=torch.float32)
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                        os.makedirs(output_directory, exist_ok=True)
+                        with open(file_path, 'wb') as f:
+                            pickle.dump(occupancy_grids, f)
                     
                     # concat
                     if prev_preds is not None:

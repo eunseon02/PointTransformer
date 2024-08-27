@@ -65,7 +65,7 @@ class PointCloudDataset(Dataset):
         data_pointcloud = self.read_ply(data_file_path)
         gt_pointcloud = self.read_ply(gt_file_path)
         lidar_pos, lidar_quat = self.read_csv(data_file_path, csv_file)
-        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat, data_files[file_idx]
+        return data_pointcloud, gt_pointcloud, lidar_pos, lidar_quat
 
     def read_ply(self, file_path):
         # print("ply", file_path)
