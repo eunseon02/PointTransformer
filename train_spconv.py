@@ -98,12 +98,12 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'sample/train'
+        self.train_path = 'dataset/train'
         self.train_dataset = PointCloudDataset(self.train_path, None)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
         
-        self.val_path = 'sample/valid'
+        self.val_path = 'dataset/valid'
         self.val_dataset = PointCloudDataset(self.val_path, None)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
@@ -151,9 +151,9 @@ class Train():
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
-            # writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Loss/train", train_loss, epoch)
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            # writer.add_scalar("Loss/valid", train_loss, epoch)
+            writer.add_scalar("Loss/valid", train_loss, epoch)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -424,10 +424,10 @@ class Train():
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
                 print("iter", iter)
-                # if iter == 1:
+                if iter == 1:
                 #     print("tensorboard_launcher")
-                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "reconstrunction")
-                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
+                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction")
+                    self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT")
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
