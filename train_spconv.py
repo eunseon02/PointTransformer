@@ -106,7 +106,6 @@ class Train():
         self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
         self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 3.0])
         
-        torch.cuda.empty_cache()
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
@@ -129,9 +128,9 @@ class Train():
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -391,8 +390,6 @@ class Train():
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
                     # print(f"prev_preds-before cat : ", prev_preds[:5])
                     del prev_preds_tensor
-                    # gc.collect()
-                    torch.cuda.empty_cache()
                 else:
                     pts = pts.repeat_interleave(2, dim=0)
                     pts = pts.view(self.batch_size, -1, 3)
@@ -424,7 +421,6 @@ class Train():
                 #     else:
                 #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
-                torch.cuda.empty_cache()
                 loss_buf.append(loss.item())
                 
                 # transform
@@ -435,8 +431,6 @@ class Train():
                         transformed_preds.append(transformed_pred)   
                         
                         del transformed_pred
-                        # gc.collect()
-                        torch.cuda.empty_cache()
                         
                 # # for debugging
                 # pts = pts.view(self.batch_size, -1, 3)
@@ -454,13 +448,8 @@ class Train():
                                 
                 # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
-                # gc.collect()
-                torch.cuda.empty_cache()
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)
-            # gc.collect()
-            torch.cuda.empty_cache()
-            
         torch.cuda.synchronize()
         # memory logging
         allocated_final = torch.cuda.memory_allocated()
@@ -526,7 +515,6 @@ class Train():
                         prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                         pts = torch.cat((prev_preds_tensor, pts), dim=1)
                         del prev_preds_tensor
-                        torch.cuda.empty_cache()
                     else:
                         pts = pts.repeat_interleave(2, dim=0)
                         pts = pts.view(self.batch_size, -1, 3)
@@ -553,20 +541,13 @@ class Train():
                             transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
                             transformed_preds.append(transformed_pred)
                             del transformed_pred
-                            # gc.collect()
-                            torch.cuda.empty_cache()
 
                     loss_buf.append(loss.item())
                     
                     # empty memory
                     del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
-                    # gc.collect()
-                    torch.cuda.empty_cache()
                     pbar.set_postfix(val_loss=np.mean(loss_buf) if loss_buf else 0)
-                    pbar.update(1)
-                # gc.collect()
-                torch.cuda.empty_cache()
-                
+                    pbar.update(1)                
             torch.cuda.synchronize()
             allocated_final = torch.cuda.memory_allocated()
             reserved_final = torch.cuda.memory_reserved()
