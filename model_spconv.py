@@ -8,7 +8,6 @@ import numpy as np
 from cumm import tensorview as tv
 import open3d as o3d
 from config import config as cfg
-from loss import NSLoss
 import cumm
 import torch.nn.functional as F
 
@@ -130,8 +129,6 @@ class PointCloud3DCNN(nn.Module):
         self.dense = spconv.ToDense()
         self.fc1 = nn.Linear(16,3)
         self.fc2 = nn.Linear(16,1)
-
-        self.loss = NSLoss()
 
     def forward(self, sparse_tensor):
         probs = []
