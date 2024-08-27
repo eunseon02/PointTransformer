@@ -31,7 +31,19 @@ import gc
 import logging
 from collections import OrderedDict
 import pickle
+from os.path import join
+from torch.utils.tensorboard import SummaryWriter
+from open3d.visualization.tensorboard_plugin import summary
+from torch.multiprocessing import Process
 
+BASE_LOGDIR = "./train_logs" 
+writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
+
+def occupancy_grid_to_coords(occupancy_grid):
+    _, H, W, D = occupancy_grid.shape
+    occupancy_grid = occupancy_grid.squeeze(0)
+    indices = torch.nonzero(occupancy_grid, as_tuple=False)  
+    return indices
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
@@ -109,6 +121,17 @@ class Train():
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
+    def tensorboard_launcher(self, points, step, color, tag):
+        points = occupancy_grid_to_coords(points[0])
+        num_points = points.shape[0]
+        colors = torch.tensor(color).repeat(num_points, 1)
+        writer.add_3d(
+        tag,
+        {
+            "vertex_positions": points.float(), # (N, 3)
+            "vertex_colors": colors.float()  # (N, 3)
+        },
+        step)
     def run(self):
         self.train_hist = {
             'train_loss': [],
@@ -128,9 +151,9 @@ class Train():
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
-            # torch.cuda.empty_cache()
+            writer.add_scalar("Loss/train", train_loss, epoch)
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            # torch.cuda.empty_cache()
+            writer.add_scalar("Loss/valid", train_loss, epoch)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -397,6 +420,9 @@ class Train():
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
+                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "reconstrunction")
+                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
+
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 
