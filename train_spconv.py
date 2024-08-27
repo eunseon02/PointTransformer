@@ -78,7 +78,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 8
+        self.batch_size = 16
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -366,9 +366,9 @@ class Train():
                 if os.path.exists(file_path):
                     with open(file_path, 'rb') as f:
                         occupancy_grids = pickle.load(f)
-                    print("File loaded successfully.")
+                    # print("File loaded successfully.")
                 else:
-                    print(f"File '{file_path}' does not exist.")
+                    # print(f"File '{file_path}' does not exist.")
                     occupancy_grids = []
                     torch.tensor([5, 14, 14], dtype=torch.float32)
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
@@ -494,9 +494,9 @@ class Train():
                     if os.path.exists(file_path):
                         with open(file_path, 'rb') as f:
                             occupancy_grids = pickle.load(f)
-                        print("File loaded successfully.")
+                        # print("File loaded successfully.")
                     else:
-                        print(f"File '{file_path}' does not exist.")
+                        # print(f"File '{file_path}' does not exist.")
                         occupancy_grids = []
                         torch.tensor([5, 14, 14], dtype=torch.float32)
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
