@@ -38,13 +38,13 @@ class PointCloudDataset(Dataset):
                     if len(gt_files) != len(data_files):
                         print(f"Warning: Mismatch in the number of GT files and data files in {batch_dir}")
                         continue
-                    print(len(gt_files))
+                    # print(len(gt_files))
                     self.total_len +=len(gt_files)
                     self.batch.append((data_files[:], gt_files[:], csv_file, batch_dir))
                     # data_files, gt_files, csv_file, batch_dir = self.batch[0]
                     # print(len(data_files), len(gt_files), csv_file, batch_dir)
                 self.batches.append(self.batch)
-                print(len(self.batch_dirs))
+                # print(len(self.batch_dirs))
     def __len__(self):
         return self.total_len 
 

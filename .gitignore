@@ -14,3 +14,4 @@ train_/
 valid_/
 *.ply
 *.profile
+logs/
