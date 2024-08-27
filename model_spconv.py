@@ -184,52 +184,33 @@ class PointCloud3DCNN(nn.Module):
             
         return coords, occu, probs, cm
     
-    # def cls_postprocess(self, feat_indices, pred_prob):
-    #     batch_indices = feat_indices[:, 0]
-    #     unique_batches = torch.unique(batch_indices)
-
-    #     cm_batch = []
-    #     pred_prob_batch = []
-
-    #     for b in unique_batches:
-    #         batch_mask = (batch_indices == b)
-    #         cm_batch.append(feat_indices[batch_mask, 1:])
-    #         pred_prob_batch.append(pred_prob[batch_mask].unsqueeze(-1))
-
-    #     max_points = max([t.size(0) for t in cm_batch])
-    #     cm_batch_padded = []
-    #     pred_prob_batch_padded = []
-
-    #     for cm, prob in zip(cm_batch, pred_prob_batch):
-    #         cm_padded = F.pad(cm, (0, 0, 0, max_points - cm.size(0)), value=0)  # [n, 3] -> [max_points, 3]
-    #         prob_padded = F.pad(prob, (0, 0, 0, max_points - prob.size(0)), value=0)  # [n, 1] -> [max_points, 1]
-            
-    #         cm_batch_padded.append(cm_padded)
-    #         pred_prob_batch_padded.append(prob_padded)
-
-    #     cm_batch = torch.stack(cm_batch_padded)
-    #     pred_prob_batch = torch.stack(pred_prob_batch_padded)
-
-    #     return cm_batch, pred_prob_batch
     def cls_postprocess(self, feat_indices, pred_prob):
         batch_indices = feat_indices[:, 0]
         unique_batches = torch.unique(batch_indices)
 
-        batch_point_counts = [(batch_indices == b).sum().item() for b in unique_batches]
-        max_points = max(batch_point_counts)  # 가장 많은 포인트 수를 가진 배치의 포인트 수를 찾음
+        cm_batch = []
+        pred_prob_batch = []
 
-        cm_batch_padded = torch.zeros((len(unique_batches), max_points, 3), dtype=feat_indices.dtype, device=feat_indices.device)
-        pred_prob_batch_padded = torch.zeros((len(unique_batches), max_points, 1), dtype=pred_prob.dtype, device=pred_prob.device)
-
-        for i, b in enumerate(unique_batches):
+        for b in unique_batches:
             batch_mask = (batch_indices == b)
-            cm = feat_indices[batch_mask, 1:]
-            prob = pred_prob[batch_mask].unsqueeze(-1)
+            cm_batch.append(feat_indices[batch_mask, 1:])
+            pred_prob_batch.append(pred_prob[batch_mask].unsqueeze(-1))
 
-            cm_batch_padded[i, :cm.size(0), :] = cm
-            pred_prob_batch_padded[i, :prob.size(0), :] = prob
+        max_points = max([t.size(0) for t in cm_batch])
+        cm_batch_padded = []
+        pred_prob_batch_padded = []
 
-        return cm_batch_padded, pred_prob_batch_padded
+        for cm, prob in zip(cm_batch, pred_prob_batch):
+            cm_padded = F.pad(cm, (0, 0, 0, max_points - cm.size(0)), value=0)  # [n, 3] -> [max_points, 3]
+            prob_padded = F.pad(prob, (0, 0, 0, max_points - prob.size(0)), value=0)  # [n, 1] -> [max_points, 1]
+            
+            cm_batch_padded.append(cm_padded)
+            pred_prob_batch_padded.append(prob_padded)
+
+        cm_batch = torch.stack(cm_batch_padded)
+        pred_prob_batch = torch.stack(pred_prob_batch_padded)
+
+        return cm_batch, pred_prob_batch
         
     def postprocess(self, preds, predicted_coords):
         import torch.nn.functional as F
@@ -237,7 +218,6 @@ class PointCloud3DCNN(nn.Module):
         batch_size = preds.batch_size
         output_coords = []
         
-        # max_num_points = max((predicted_coords[(preds.indices[:, 0] == batch_idx)].shape[0] for batch_idx in range(batch_size)))
         batch_indices = preds.indices[:, 0]
         batch_counts = torch.zeros(batch_size, device=predicted_coords.device)
         for batch_idx in range(batch_size):
@@ -247,7 +227,6 @@ class PointCloud3DCNN(nn.Module):
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)
             batch_coords = predicted_coords[batch_mask]
-            # print(f"batch_coords: {batch_coords.grad_fn}")
             
             if batch_coords.shape[0] > max_num_points:
                 print("output : ", batch_coords.shape[0])
@@ -257,7 +236,6 @@ class PointCloud3DCNN(nn.Module):
             if padding_size > 0:
                 padding = torch.zeros((padding_size, 3), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
                 padded_batch_coords = torch.cat([batch_coords, padding], dim=0)
-                # print(f"padded_batch_coords grad_fn: {padded_batch_coords.grad_fn}")
 
             else:
                 padded_batch_coords = batch_coords
