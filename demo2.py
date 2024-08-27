@@ -113,10 +113,6 @@ class Train():
             print(len(self.val_dataset.batch_dirs))
             raise RuntimeError('Wrong batch_size')
         self.parameter = self.model.parameters()
-        self.criterion = NSLoss().to(self.device)
-        self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "check"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_spconv.txt'
         self.input_shape = (50, 120, 120)
         
         torch.backends.cudnn.benchmark = True
