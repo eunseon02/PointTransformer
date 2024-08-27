@@ -19,9 +19,9 @@ pip install git+'https://github.com/otaheri/chamfer_distance'
 ```
 
 
-### **Requirements**
+### **Train**
 
-train
+
 ```bash
 python train_spconv.py
 ```
