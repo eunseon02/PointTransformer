@@ -539,7 +539,6 @@ class Train():
                     lidar_quat = lidar_quat.to(self.device)
                     
                     
-                    
                     if len(self.val_taget_loader) != len(self.val_loader):
                         print("calculate")
                         output_directory = "valid_"
