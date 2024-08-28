@@ -140,6 +140,7 @@ class Train():
             "vertex_colors": colors.float()  # (N, 3)
         },
         step)
+        # print("save")
     def transform_point_cloud(self, point_cloud, pos, quat):
         """
         Transform point cloud to world frame using position and quaternion.
