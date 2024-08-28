@@ -7,6 +7,8 @@ import glob
 import random
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
+import pickle
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class PointCloudDataset(Dataset):
@@ -20,11 +22,11 @@ class PointCloudDataset(Dataset):
         if batch_dirs is None:
             batch_dirs = sorted(os.listdir(root_dir))
         self.batch_dirs = [os.path.join(root_dir, d) for d in batch_dirs]
-        print("batch_dirs", len(self.batch_dirs))
+        # print("batch_dirs", len(self.batch_dirs))
         self.total_len = 0
         self.batches = []
         for batch_dir in self.batch_dirs:
-            print("batch_dir", batch_dir)
+            # print("batch_dir", batch_dir)
             if os.path.isdir(batch_dir):
                 csv_file_pattern = os.path.join(batch_dir, 'delta_pose*.csv')
                 csv_files = sorted(glob.glob(csv_file_pattern))
@@ -39,7 +41,7 @@ class PointCloudDataset(Dataset):
                     if len(gt_files) != len(data_files):
                         print(f"Warning: Mismatch in the number of GT files and data files in {batch_dir}")
                         continue
-                    # print(len(gt_files))
+                    print(len(gt_files))
                     self.total_len +=len(gt_files)
                     self.batch.append((data_files[:], gt_files[:], csv_file, batch_dir))
                     # data_files, gt_files, csv_file, batch_dir = self.batch[0]
@@ -53,7 +55,11 @@ class PointCloudDataset(Dataset):
         batch_idx = idx % len(self.batch_dirs)
         file_idx = idx // len(self.batch_dirs)
         batch = self.batches[batch_idx]
-        
+        file_idx = ((file_idx%2)* (len(batch[0][0])//2)) + (idx // (len(self.batch_dirs)*2))        
+
+        if len(batch) == 0 or len(batch[0]) == 0 or len(batch[0][0]) == 0:
+            raise ValueError(f"Invalid dataset")
+            
         if file_idx >= (len(batch[0][0])):
             raise IndexError(f"idx = {idx} : file_idx {file_idx} out of range for batch size {len(batch)}")
 
@@ -115,6 +121,7 @@ class PointCloudDataset(Dataset):
             print(f"No data found for file name: {file_path}")
             return np.zeros(3, dtype=np.float32), np.array([1, 0, 0, 0], dtype=np.float32)
         else:
+            # print(f"data found for file name: {file_path}")
             # print(row)
             delta_quat = row[['delta_quat_x', 'delta_quat_y', 'delta_quat_z', 'delta_quat_w']].values.flatten().astype(np.float32)
             delta_pos = row[['delta_pos_x', 'delta_pos_y', 'delta_pos_z']].values.flatten().astype(np.float32)
@@ -125,3 +132,24 @@ class PointCloudDataset(Dataset):
                 delta_quat = np.array([1, 0, 0, 0], dtype=np.float32)
             return delta_pos, delta_quat
 
+
+class GetTarget(Dataset):
+    def __init__(self, root_dir):
+        self.root_dir = root_dir
+        self.file_paths = os.listdir(root_dir)
+        print(self.file_paths)
+        
+    def __len__(self):
+        return len(self.file_paths)
+    
+    def __getitem__(self, idx):
+        file_path = self.file_paths[idx]
+        file_path = os.path.join(self.root_dir, file_path)
+        if os.path.exists(file_path):
+            with open(file_path, 'rb') as f:
+                occupancy_grids = pickle.load(f)
+            print("File loaded successfully.")
+        else:
+            print(f"File '{file_path}' does not exist.")
+            
+        return occupancy_grids, file_path
