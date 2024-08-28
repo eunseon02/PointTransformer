@@ -106,13 +106,18 @@ class Train():
         self.train_dataset = PointCloudDataset(self.train_path, self.train_paths)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
+        if (len(self.train_dataset.batch_dirs)*self.train_dataset.split) != self.batch_size:
+            print(len(self.train_dataset.batch_dirs))
+            raise RuntimeError('Wrong train batch_size')
         
         self.val_path = 'dataset/valid'
-        self.val_paths = ['batch_1', 'batch_2']
+        self.val_paths = ['batch_1']
         self.val_dataset = PointCloudDataset(self.val_path, self.val_paths)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
-        
+        if (len(self.val_dataset.batch_dirs)*self.val_dataset.split) != self.batch_size:
+            print(len(self.val_dataset.batch_dirs))
+            raise RuntimeError('Wrong valid batch_size')
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)

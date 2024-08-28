@@ -16,6 +16,7 @@ class PointCloudDataset(Dataset):
         self.root_dir = root_dir
         self.point_cnt = 2048
         self.csv_files = []
+        self.split = 4
         
         if batch_dirs is None:
             batch_dirs = sorted(os.listdir(root_dir))
