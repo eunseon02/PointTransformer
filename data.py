@@ -12,11 +12,11 @@ import joblib
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class PointCloudDataset(Dataset):
-    def __init__(self, root_dir, batch_dirs):
+    def __init__(self, root_dir, batch_dirs, split):
         self.root_dir = root_dir
         self.point_cnt = 2048
         self.csv_files = []
-        self.split = 4
+        self.split = split
         
         if batch_dirs is None:
             batch_dirs = sorted(os.listdir(root_dir))
@@ -53,11 +53,9 @@ class PointCloudDataset(Dataset):
     def __getitem__(self, idx):
         batch_idx = idx % len(self.batch_dirs)
         file_idx = idx // len(self.batch_dirs)
-        # print(len(self.batch_dirs))
         batch = self.batches[batch_idx]
-        # print(len(batch[0][0]))
         file_idx = ((file_idx%self.split)* (len(batch[0][0])//self.split)) + (idx // (len(self.batch_dirs)*self.split))        
-
+        # print(idx // len(self.batch_dirs), file_idx)
         if len(batch) == 0 or len(batch[0]) == 0 or len(batch[0][0]) == 0:
             raise ValueError(f"Invalid dataset")
             
