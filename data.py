@@ -53,8 +53,10 @@ class PointCloudDataset(Dataset):
     def __getitem__(self, idx):
         batch_idx = idx % len(self.batch_dirs)
         file_idx = idx // len(self.batch_dirs)
+        # print(len(self.batch_dirs))
         batch = self.batches[batch_idx]
-        file_idx = ((file_idx%4)* (len(batch[0][0])//4)) + (idx // (len(self.batch_dirs)*4))        
+        # print(len(batch[0][0]))
+        file_idx = ((file_idx%self.split)* (len(batch[0][0])//self.split)) + (idx // (len(self.batch_dirs)*self.split))        
 
         if len(batch) == 0 or len(batch[0]) == 0 or len(batch[0][0]) == 0:
             raise ValueError(f"Invalid dataset")
@@ -143,9 +145,11 @@ class GetTarget(Dataset):
         
         
     def __len__(self):
-        return len(self.file_paths)
+        return max(9999, len(self.file_paths)) 
     
     def __getitem__(self, idx):
+        if idx >= len(self.file_paths):
+            return []
         file_path = self.file_paths[idx]
         file_path = os.path.join(self.root_dir, file_path)
         if os.path.exists(file_path):

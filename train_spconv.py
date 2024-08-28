@@ -93,7 +93,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 4
+        self.batch_size = 148
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -102,8 +102,7 @@ class Train():
             self._load_pretrain(args.model_path)
         
         self.train_path = 'dataset/train'
-        self.train_paths = ['batch_1']
-        self.train_dataset = PointCloudDataset(self.train_path, self.train_paths)
+        self.train_dataset = PointCloudDataset(self.train_path, None)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
         if (len(self.train_dataset.batch_dirs)*self.train_dataset.split) != self.batch_size:
@@ -111,8 +110,7 @@ class Train():
             raise RuntimeError('Wrong train batch_size')
         
         self.val_path = 'dataset/valid'
-        self.val_paths = ['batch_1']
-        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths)
+        self.val_dataset = PointCloudDataset(self.val_path, None)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
         if (len(self.val_dataset.batch_dirs)*self.val_dataset.split) != self.batch_size:
@@ -170,21 +168,12 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 0
+        start_epoch = 90
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             writer.add_scalar("Loss/train", train_loss, epoch)
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
             writer.add_scalar("Loss/valid", train_loss, epoch)
-            
-            if len(self.train_taget_loader) != len(self.train_loader):
-                print("regenerate loader")
-                self.train_get_target = GetTarget(self.train_target_dir)
-                self.train_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-                # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-            if len(self.val_taget_loader) != len(self.val_loader):
-                self.valid_get_target = GetTarget(self.valid_target_dir)
-                self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -392,10 +381,7 @@ class Train():
         preds = None
         transformed_preds = []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-            for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
-                print(len(self.train_taget_loader))
-                print(len(self.train_loader))
-                
+            for iter, batch  in enumerate(self.train_loader):
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     pbar.update(1)
@@ -447,9 +433,9 @@ class Train():
                 preds, occu, probs, cm = self.model(sptensor)
   
                 if iter == 1:
-                #     print("tensorboard_launcher")
-                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction")
-                    self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT")
+                    print("tensorboard_launcher")
+                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction_train")
+                    self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT_train")
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
