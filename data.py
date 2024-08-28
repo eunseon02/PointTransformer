@@ -148,7 +148,7 @@ class GetTarget(Dataset):
         if len(self.file_paths) == 0:
             return 9999
         else:
-            return max(9999, len(self.file_paths)) 
+            return len(self.file_paths)
     
     def __getitem__(self, idx):
         if idx >= len(self.file_paths):

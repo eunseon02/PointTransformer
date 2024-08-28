@@ -173,7 +173,7 @@ class Train():
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             writer.add_scalar("Loss/train", train_loss, epoch)
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
-            writer.add_scalar("Loss/valid", train_loss, epoch)
+            writer.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
                 print("Regenerate train loader")
@@ -393,6 +393,8 @@ class Train():
         transformed_preds = []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
             for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
+                print(len(self.train_loader))
+                print(len(self.train_taget_loader))
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     pbar.update(1)
