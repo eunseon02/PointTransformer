@@ -381,7 +381,7 @@ class Train():
         preds = None
         transformed_preds = []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-            for iter, batch  in enumerate(self.train_loader):
+            for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     pbar.update(1)
@@ -510,7 +510,7 @@ class Train():
         transformed_preds = []
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-                for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.val_taget_loader)):
+                for iter, (batch, occupancy_grids) in enumerate(zip(self.val_loader, self.val_taget_loader)):
                     if batch is None:
                         print(f"Skipping batch {iter} because it is None")
                         pbar.update(1)
