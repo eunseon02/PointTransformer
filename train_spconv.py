@@ -43,9 +43,10 @@ BASE_LOGDIR = "./train_logs"
 writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
 
 def occupancy_grid_to_coords(occupancy_grid):
-    _, H, W, D = occupancy_grid.shape
-    occupancy_grid = occupancy_grid.squeeze(0)
-    indices = torch.nonzero(occupancy_grid, as_tuple=False)  
+    _, _, H, W, D = occupancy_grid.shape
+    occupancy_grid = occupancy_grid[0, 0]
+    indices = torch.nonzero(occupancy_grid > 0, as_tuple=False) 
+    # print(indices.dtype) 
     return indices
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
@@ -112,7 +113,7 @@ class Train():
         self.val_path = 'dataset/valid'
         self.val_dataset = PointCloudDataset(self.val_path, None)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
-        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
+        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
         if (len(self.val_dataset.batch_dirs)*self.val_dataset.split) != self.batch_size:
             print(len(self.val_dataset.batch_dirs))
             raise RuntimeError('Wrong valid batch_size')
@@ -142,7 +143,7 @@ class Train():
         torch.backends.cudnn.enabled = True
 
     def tensorboard_launcher(self, points, step, color, tag):
-        points = occupancy_grid_to_coords(points[0])
+        points = occupancy_grid_to_coords(points)
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
         writer.add_3d(
@@ -393,8 +394,9 @@ class Train():
         transformed_preds = []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
             for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
-                print(len(self.train_loader))
-                print(len(self.train_taget_loader))
+                # print("1", len(self.train_loader))
+                # print("2", len(self.train_taget_loader))
+                # print("3", len(self.train_taget_loader.file_paths))
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     pbar.update(1)
@@ -447,7 +449,7 @@ class Train():
   
                 if iter == 1:
                     print("tensorboard_launcher")
-                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction_train")
+                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
                     self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT_train")
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
@@ -523,6 +525,9 @@ class Train():
         transformed_preds = []
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
+                # print("1", len(self.val_taget_loader))
+                # print("2", len(self.val_loader))
+                # print("3", len(self.valid_get_target.file_paths))
                 for iter, (batch, occupancy_grids) in enumerate(zip(self.val_loader, self.val_taget_loader)):
                     if batch is None:
                         print(f"Skipping batch {iter} because it is None")
@@ -539,8 +544,7 @@ class Train():
                     gt_pts = gt_pts.to(self.device)
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
-                    
-                    
+           
                     if len(self.val_taget_loader) != len(self.val_loader):
                         print("calculate")
                         output_directory = "valid_"
@@ -552,7 +556,8 @@ class Train():
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                         os.makedirs(output_directory, exist_ok=True)
-                        joblib.dump(occupancy_grids, file_path)           
+                        joblib.dump(occupancy_grids, file_path)
+                        print(f"save {iter}.joblib")           
                         
                     # concat
                     if prev_preds is not None:
