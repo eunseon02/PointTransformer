@@ -220,7 +220,7 @@ class PointCloud3DCNN(nn.Module):
         for batch_idx in range(batch_size):
             batch_counts[batch_idx] = (batch_indices == batch_idx).sum()
 
-        max_num_points = int(batch_counts.max().item())
+        max_num_points = batch_counts.max().int()
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)
             batch_coords = predicted_coords[batch_mask]

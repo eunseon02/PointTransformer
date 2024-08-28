@@ -35,22 +35,13 @@ from os.path import join
 from torch.utils.tensorboard import SummaryWriter
 from open3d.visualization.tensorboard_plugin import summary
 from torch.multiprocessing import Process
-from data import GetTarget
 import joblib
+import h5py
+from data import GetTarget
 
 BASE_LOGDIR = "./train_logs" 
 writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
-def load_all_occupancy_grids(output_directory, num_batches):
-    occupancy_grids = []
-    for iter in range(num_batches):
-        file_path = os.path.join(output_directory, f'{iter}.pkl')
-        if os.path.exists(file_path):
-            with open(file_path, 'rb') as f:
-                occupancy_grids.append(pickle.load(f))
-        else:
-            print(f"File '{file_path}' does not exist.")
-            occupancy_grids.append(None)  # or handle this case as needed
-    return occupancy_grids
+
 def occupancy_grid_to_coords(occupancy_grid):
     _, H, W, D = occupancy_grid.shape
     occupancy_grid = occupancy_grid.squeeze(0)
@@ -100,9 +91,9 @@ def profileit(func):
 
 class Train():
     def __init__(self, args):
-        self.epochs = 500
+        self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 74
+        self.batch_size = 4
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -111,26 +102,16 @@ class Train():
             self._load_pretrain(args.model_path)
         
         self.train_path = 'dataset/train'
-        self.train_dataset = PointCloudDataset(self.train_path, None)
+        self.train_paths = ['batch_1', 'batch_2']
+        self.train_dataset = PointCloudDataset(self.train_path, self.train_paths)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
-        if (len(self.train_dataset.batch_dirs)*2) != self.batch_size:
-            print(len(self.train_dataset.batch_dirs))
-            raise RuntimeError('Wrong train batch_size')
-
+        
         self.val_path = 'dataset/valid'
-        self.val_dataset = PointCloudDataset(self.val_path, None)
+        self.val_paths = ['batch_1', 'batch_2']
+        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
-        if (len(self.val_dataset.batch_dirs)*2) != self.batch_size:
-            print(len(self.val_dataset.batch_dirs))
-            raise RuntimeError('Wrong validation batch_size')
-        
-        # self.get_target_train = DataLoader(GetTarget("train_"), batch_size=1, shuffle=False)
-        # self.get_target_valid = DataLoader(GetTarget("valid_"), batch_size=1, shuffle=False)
-        # self.train_occu = load_all_occupancy_grids("train_", len(self.train_loader))
-        # self.valid_occu = load_all_occupancy_grids("valid_", len(self.train_loader))
-
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
@@ -139,11 +120,20 @@ class Train():
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
         self.input_shape = (50, 120, 120)
         
+        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
+        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 3.0])
+        
         self.train_occu = []
         self.valid_occu = []
         
-        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
-        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 3.0])
+        
+        self.train_target_dir = "train_"
+        self.train_get_target = GetTarget(self.train_target_dir)
+        self.valid_target_dir = "valid_"
+        self.valid_get_target = GetTarget(self.valid_target_dir)
+        self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+        self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+
         
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
@@ -175,12 +165,21 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 40
+        start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             writer.add_scalar("Loss/train", train_loss, epoch)
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
             writer.add_scalar("Loss/valid", train_loss, epoch)
+            
+            if len(self.train_taget_loader) != len(self.train_loader):
+                print("regenerate loader")
+                self.train_get_target = GetTarget(self.train_target_dir)
+                self.train_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+                # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+            if len(self.val_taget_loader) != len(self.val_loader):
+                self.valid_get_target = GetTarget(self.valid_target_dir)
+                self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -380,7 +379,6 @@ class Train():
         occupancy_values = occupancy_grid[batch_indices, 0, x_indices, y_indices, z_indices]
         return occupancy_values
                 
-
     @profileit
     def train_epoch(self, epoch, prev_preds):
         epoch_start_time = time.time()
@@ -389,17 +387,16 @@ class Train():
         preds = None
         transformed_preds = []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-            for iter, batch  in enumerate(self.train_loader):
+            for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
+                print(len(self.train_taget_loader))
+                print(len(self.train_loader))
+                
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     pbar.update(1)
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat = batch
-                
-                # print(data_file_path)
-                # tensor_to_ply(pts, f"pts_{iter}.ply")
-                # tensor_to_ply(gt_pts, f"gt_{iter}.ply")
 
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
@@ -410,22 +407,11 @@ class Train():
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
-                
-                output_directory = "train_"
-                file_path = os.path.join(output_directory, f'{iter}.pkl')
-
-                ## get_target
-                # if epoch ==40:
-                        
-                if os.path.exists(file_path):
-                    occupancy_grids = joblib.load(file_path)
-                    # with open(file_path, 'rb') as f:
-                    #     occupancy_grids = pickle.load(f)
-                    print("File loaded successfully.")
-                    if occupancy_grids[0].size(0) != self.batch_size:
-                        print("error")
-                else:
-                    print(f"File '{file_path}' does not exist.")
+    
+                if len(self.train_taget_loader) != len(self.train_loader):
+                    print("calculate")
+                    output_directory = "train_"
+                    file_path = os.path.join(output_directory, f'{iter}.joblib')
                     occupancy_grids = []
                     # torch.tensor([5, 14, 14], dtype=torch.float32)
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
@@ -433,13 +419,9 @@ class Train():
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                     os.makedirs(output_directory, exist_ok=True)
-                    with open(file_path, 'wb') as f:
-                        pickle.dump(occupancy_grids, f)
-                #     self.train_occu.append(occupancy_grids)
-                # else:
-                #     occupancy_grids = self.train_occu[iter]
+                    joblib.dump(occupancy_grids, file_path)
                 
-                # print("occupancy_grids", occupancy_grids[0].shape)
+                    
                 # concat
                 if prev_preds is not None:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
@@ -470,7 +452,8 @@ class Train():
                 gt_probs = []
                 for idx in range(len(probs)):
                     # tensor_to_ply(cm[idx][0], "cm.ply")
-                    gt_prob = self.get_target(occupancy_grids[idx], cm[idx], idx)
+                    # print("check", occupancy_grids[idx].squeeze(0).shape())
+                    gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
                     gt_probs.append(gt_prob)
                 
                 loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)
@@ -534,7 +517,7 @@ class Train():
         transformed_preds = []
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-                for iter, batch  in enumerate(self.val_loader):
+                for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.val_taget_loader)):
                     if batch is None:
                         print(f"Skipping batch {iter} because it is None")
                         pbar.update(1)
@@ -552,17 +535,11 @@ class Train():
                     lidar_quat = lidar_quat.to(self.device)
                     
                     
-                    output_directory = "valid_"
-                    file_path = os.path.join(output_directory, f'{iter}.pkl')
-                    # if epoch ==40:
-                    ## get_target
-                    if os.path.exists(file_path):
-                        occupancy_grids = joblib.load(file_path)
-                        # with open(file_path, 'rb') as f:
-                        #     occupancy_grids = pickle.load(f)
-                        print("File loaded successfully.")
-                    else:
-                        print(f"File '{file_path}' does not exist.")
+                    
+                    if len(self.val_taget_loader) != len(self.val_loader):
+                        print("calculate")
+                        output_directory = "valid_"
+                        file_path = os.path.join(output_directory, f'{iter}.joblib')
                         occupancy_grids = []
                         # torch.tensor([5, 14, 14], dtype=torch.float32)
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
@@ -570,13 +547,8 @@ class Train():
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                         os.makedirs(output_directory, exist_ok=True)
-                        with open(file_path, 'wb') as f:
-                            pickle.dump(occupancy_grids, f)
-                    #     self.valid_occu.append(occupancy_grids)
-                    # else:
-                    #     self.valid_occu[iter]
+                        joblib.dump(occupancy_grids, file_path)           
                         
-                    
                     # concat
                     if prev_preds is not None:
                         prev_preds = [torch.as_tensor(p) for p in prev_preds]
@@ -597,7 +569,7 @@ class Train():
                     gt_probs = []
                     for idx in range(len(probs)):
                         # tensor_to_ply(cm[idx][0], "cm.ply")
-                        gt_prob = self.get_target(occupancy_grids[idx], cm[idx], idx)
+                        gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
                         gt_probs.append(gt_prob)
                     
                     loss = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)                    

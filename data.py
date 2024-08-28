@@ -8,16 +8,14 @@ import random
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import pickle
-
+import joblib
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class PointCloudDataset(Dataset):
     def __init__(self, root_dir, batch_dirs):
         self.root_dir = root_dir
-        self.sub_region = 6.0
         self.point_cnt = 2048
         self.csv_files = []
-        self.csv_data_list = []
         
         if batch_dirs is None:
             batch_dirs = sorted(os.listdir(root_dir))
@@ -136,8 +134,12 @@ class PointCloudDataset(Dataset):
 class GetTarget(Dataset):
     def __init__(self, root_dir):
         self.root_dir = root_dir
-        self.file_paths = os.listdir(root_dir)
-        print(self.file_paths)
+        if os.path.exists(root_dir):
+            self.file_paths = sorted(os.listdir(root_dir), key=lambda x: f"{int(os.path.splitext(x)[0]):03d}")
+        else:
+            self.file_paths = []
+        # print(self.file_paths)
+        
         
     def __len__(self):
         return len(self.file_paths)
@@ -146,10 +148,9 @@ class GetTarget(Dataset):
         file_path = self.file_paths[idx]
         file_path = os.path.join(self.root_dir, file_path)
         if os.path.exists(file_path):
-            with open(file_path, 'rb') as f:
-                occupancy_grids = pickle.load(f)
-            print("File loaded successfully.")
-        else:
-            print(f"File '{file_path}' does not exist.")
+            occupancy_grids = joblib.load(file_path, mmap_mode='r')
+            # print("File loaded successfully.")
+        # else:
+        #     print(f"File '{file_path}' does not exist.")
             
-        return occupancy_grids, file_path
+        return occupancy_grids
