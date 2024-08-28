@@ -175,6 +175,17 @@ class Train():
             val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
             writer.add_scalar("Loss/valid", train_loss, epoch)
 
+            if len(self.train_taget_loader) != len(self.train_loader):
+                print("Regenerate train loader")
+                self.train_get_target = GetTarget(self.train_target_dir)
+                self.train_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+                # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+            if len(self.val_taget_loader) != len(self.val_loader):
+                print("Regenerate valid loader")
+                self.valid_get_target = GetTarget(self.valid_target_dir)
+                self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+
+            
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
                 self._snapshot(epoch + 1)
