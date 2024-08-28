@@ -102,7 +102,7 @@ class Train():
             self._load_pretrain(args.model_path)
         
         self.train_path = 'dataset/train'
-        self.train_paths = ['batch_1', 'batch_2']
+        self.train_paths = ['batch_1']
         self.train_dataset = PointCloudDataset(self.train_path, self.train_paths)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
@@ -397,6 +397,7 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat = batch
+                # print(data_file_path)
 
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
@@ -439,6 +440,7 @@ class Train():
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
+  
                 if iter == 1:
                 #     print("tensorboard_launcher")
                     self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction")

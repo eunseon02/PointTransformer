@@ -53,7 +53,7 @@ class PointCloudDataset(Dataset):
         batch_idx = idx % len(self.batch_dirs)
         file_idx = idx // len(self.batch_dirs)
         batch = self.batches[batch_idx]
-        file_idx = ((file_idx%2)* (len(batch[0][0])//2)) + (idx // (len(self.batch_dirs)*2))        
+        file_idx = ((file_idx%4)* (len(batch[0][0])//4)) + (idx // (len(self.batch_dirs)*4))        
 
         if len(batch) == 0 or len(batch[0]) == 0 or len(batch[0][0]) == 0:
             raise ValueError(f"Invalid dataset")
