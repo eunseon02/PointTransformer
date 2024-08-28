@@ -52,3 +52,26 @@ if iter >= len(self.train_occu):
 occupancy_grids = self.train_occu[iter] 
 ```
 RAM사용 너무 큼
+
+```python
+
+## get target
+output_directory = "train_"
+file_path = os.path.join(output_directory, f'{iter}.joblib')
+if f"{iter}" not in f:
+    occupancy_grids = []
+    # torch.tensor([5, 14, 14], dtype=torch.float32)
+    occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+    occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+    occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+    os.makedirs(output_directory, exist_ok=True)
+    group = f.create_group(f"{iter}")
+    for i, tensor in enumerate(occupancy_grids):
+        group.create_dataset(f"grid_{i}", data=tensor.numpy())
+
+else:
+    group = f[f"{iter}"]
+    occupancy_grids = [torch.tensor(group[f"grid_{i}"]) for i in range(len(group))]
+    print("out", occupancy_grids[0].shape)
+```
