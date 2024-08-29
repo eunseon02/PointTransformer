@@ -83,9 +83,10 @@ def profileit(func):
 
     return wrapper
 def occupancy_grid_to_coords(occupancy_grid):
-    _, H, W, D = occupancy_grid.shape
-    occupancy_grid = occupancy_grid.squeeze(0)
-    indices = torch.nonzero(occupancy_grid, as_tuple=False)  
+    _, _, H, W, D = occupancy_grid.shape
+    occupancy_grid = occupancy_grid[0, 0]
+    indices = torch.nonzero(occupancy_grid > 0, as_tuple=False) 
+    # print(indices.dtype) 
     return indices
 
 class Train():
@@ -93,6 +94,7 @@ class Train():
         self.epochs = 300
         self.snapshot_interval = 10
         self.batch_size = 1
+        self.split = 1
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -103,7 +105,7 @@ class Train():
         self.ply_file = "preds.ply"
         self.val_path = 'sample/train'
         self.val_paths = ['batch_2']
-        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths)
+        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
         if len(self.val_dataset.batch_dirs) != self.batch_size:
@@ -115,11 +117,6 @@ class Train():
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
         
-    def visualize_ply(self, ply_file_path):
-        point_cloud = o3d.io.read_point_cloud(ply_file_path)
-        print(f"Loaded PLY file: {ply_file_path}")
-        print(point_cloud)
-        o3d.visualization.draw_geometries([point_cloud])
 
     def run(self):
         print('start!!')
@@ -133,7 +130,7 @@ class Train():
             prev_preds_val = self.demo(epoch, prev_preds_val)
 
     def tensorboard_launcher(self, points, step, color, tag):
-        points = occupancy_grid_to_coords(points[0])
+        points = occupancy_grid_to_coords(points)
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
         writer.add_3d(
@@ -143,6 +140,7 @@ class Train():
             "vertex_colors": colors.float()  # (N, 3)
         },
         step)
+        # print("save")
     def transform_point_cloud(self, point_cloud, pos, quat):
         """
         Transform point cloud to world frame using position and quaternion.
@@ -249,7 +247,9 @@ class Train():
         preds = None
         transformed_preds = []
         with torch.no_grad():
+            print(len((self.val_loader)))
             for iter, batch  in enumerate(self.val_loader):
+                print(f"{iter}/{len((self.val_loader))}")
                 # print("iter", iter)
                 pts, gt_pts, lidar_pos, lidar_quat = batch
     
@@ -282,21 +282,18 @@ class Train():
                 pts_occu = self.occupancy_grid_(pts)
 
                 preds, occu, probs, cm = self.model(sptensor)
-                if iter ==1:
-                    print("save tensorboard")
-                    self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "reconstrunction")
-                    self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT")
+                # if iter ==200:
+                #     print("save tensorboard")
+                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "Reconstrunction")
+                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
                 # writer.add_scalar("example_scalar", 0.5, 0)
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
                 # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
-                tensor_to_ply(pts[0], "pts.ply")
-                tensor_to_ply(preds[0], "preds.ply")
-                self.ply_file = "preds.ply"
-                # visualize_ply("preds.ply")
-                # visualize_process = Process(target=trainer.visualize_ply, args=(self.ply_file,))
-                # visualize_process.start()
+                # tensor_to_ply(pts[0], "pts.ply")
+                # tensor_to_ply(preds[0], "preds.ply")
+
 
                 # transform
                 transformed_preds = []

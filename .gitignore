@@ -18,3 +18,4 @@ logs/
 _pycache_/
 train_logs/
 train_logs/
+*.pth
