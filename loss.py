@@ -16,6 +16,7 @@ cuda_kernel = ctypes.CDLL("./get_target.so")
 logging.basicConfig(filename='loss_log.txt', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 def save_occupancy_grid_as_ply(occupancy_grid, filename="occupancy_grid.ply"):
     batch_size = occupancy_grid.size(0)
     
@@ -180,8 +181,9 @@ class NSLoss(nn.Module):
             cls_loss = self.cls_loss(probs[idx].squeeze(-1), gt_probs[idx].to(preds.device))
             cls_losses = cls_losses + cls_loss
         cls_losses = cls_losses/ len(probs)
-        
-        return cham_loss + occu_loss + cls_losses
+
+
+        return cham_loss + occu_loss + cls_losses,cham_loss, occu_loss, cls_losses
     
 
         

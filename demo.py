@@ -103,7 +103,7 @@ class Train():
             self._load_pretrain(args.model_path)
         
         self.ply_file = "preds.ply"
-        self.val_path = 'sample/train'
+        self.val_path = 'dataset/train'
         self.val_paths = ['batch_2']
         self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
@@ -124,10 +124,9 @@ class Train():
         self.model.train()
         prev_preds_val = None
 
-        start_epoch = 0
-        for epoch in range(start_epoch, self.epochs):
-            print(epoch)
-            prev_preds_val = self.demo(epoch, prev_preds_val)
+        # start_epoch = 0
+        # for epoch in range(start_epoch, self.epochs):
+        prev_preds_val = self.demo(0, prev_preds_val)
 
     def tensorboard_launcher(self, points, step, color, tag):
         points = occupancy_grid_to_coords(points)
@@ -247,7 +246,7 @@ class Train():
         preds = None
         transformed_preds = []
         with torch.no_grad():
-            print(len((self.val_loader)))
+            print("len:", len((self.val_loader)))
             for iter, batch  in enumerate(self.val_loader):
                 print(f"{iter}/{len((self.val_loader))}")
                 # print("iter", iter)
@@ -284,12 +283,13 @@ class Train():
                 preds, occu, probs, cm = self.model(sptensor)
                 # if iter ==200:
                 #     print("save tensorboard")
+                
                 self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "Reconstrunction")
                 self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
                 # writer.add_scalar("example_scalar", 0.5, 0)
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
-                # save_single_occupancy_grid_as_ply(occu, 'occu.ply')
+                save_single_occupancy_grid_as_ply(occu, 'occu.ply')
                 # save_single_occupancy_grid_as_ply(pts_occu.dense(), 'pts_occu.ply')
                 # tensor_to_ply(pts[0], "pts.ply")
                 # tensor_to_ply(preds[0], "preds.ply")
@@ -330,7 +330,7 @@ class Train():
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model_path', type=str, default='', metavar='N',
+    parser.add_argument('--model_path', type=str, default='weight2/model_epoch_best_139.pth', metavar='N',
                         help='Path to load model')
     args = parser.parse_args()
     return args

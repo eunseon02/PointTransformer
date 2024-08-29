@@ -1,29 +1,14 @@
 import open3d as o3d
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
-def plot_ply(filename):
-    # Read the PLY file using Open3D
-    pcd = o3d.io.read_point_cloud(filename)
-    
-    # Convert the point cloud to a numpy array
-    points = np.asarray(pcd.points)
-    
-    # Create a 3D plot
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    
-    # Plot the point cloud data
-    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1)
-    
-    # Set labels
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    
-    # Show plot
-    plt.show()
+# PLY 파일 경로 설정
+ply_file_path = "occu.ply"
 
-# Example usage
-plot_ply("occupancy_grid.ply")
+# PLY 파일 읽기
+pcd = o3d.io.read_point_cloud(ply_file_path)
+
+# 포인트 클라우드 정보 출력
+print(pcd)
+print(f"Number of points: {len(pcd.points)}")
+
+# 포인트 클라우드 시각화
+o3d.visualization.draw_geometries([pcd])
