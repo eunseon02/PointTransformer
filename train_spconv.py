@@ -94,8 +94,8 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 37
-        self.split =1
+        self.batch_size = 74
+        self.split = 2
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
@@ -167,17 +167,15 @@ class Train():
         start_time = time.time()
 
         self.model.train()
-        prev_preds = None
-        prev_preds_val = None
 
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
-            train_loss, epoch_time, prev_preds, cham_loss, occu_loss, cls_losses= self.train_epoch(epoch, prev_preds)
+            train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
-            writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
-            writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
-            writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
-            val_loss, prev_preds_val = self.validation_epoch(epoch, prev_preds_val)
+            # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
+            # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
+            # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
+            val_loss = self.validation_epoch(epoch)
             writer.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
@@ -390,7 +388,7 @@ class Train():
         return occupancy_values
                 
     @profileit
-    def train_epoch(self, epoch, prev_preds):
+    def train_epoch(self, epoch):
         epoch_start_time = time.time()
         loss_buf = []
         self.model.train()
@@ -441,7 +439,9 @@ class Train():
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
                     # self.tensorboard_launcher(prev_preds[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
+                    del prev_preds
                     prev_preds = []
+
                     # print(f"prev_preds-before cat : ", prev_preds[:5])
                     del prev_preds_tensor
                 else:
@@ -474,11 +474,12 @@ class Train():
                     # print("check", occupancy_grids[idx].squeeze(0).shape())
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
                     gt_probs.append(gt_prob)
+                occupancy_grids.clear()
                 
                 loss, cham_loss, occu_loss, cls_losses = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)
-                cham_loss_buf.append(cham_loss)
-                occu_loss_buf.append(occu_loss)
-                cls_losses_buf.append(cls_losses)
+                # cham_loss_buf.append(cham_loss.item())
+                # occu_loss_buf.append(occu_loss.item())
+                # cls_losses_buf.append(cls_losses.item())
                 loss.backward()
 
                 # for name, param in self.model.named_parameters():
@@ -511,7 +512,7 @@ class Train():
 
                                 
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, cham_loss, occu_loss, cls_losses, occu, probs, cm
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)
         torch.cuda.synchronize()
@@ -525,14 +526,14 @@ class Train():
         epoch_time = time.time() - epoch_start_time
         self.train_hist['per_epoch_time'].append(epoch_time)
         self.train_hist['train_loss'].append(np.mean(loss_buf))
-        return np.mean(loss_buf), epoch_time, transformed_preds, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses)
+        # return np.mean(loss_buf), epoch_time, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses)
+        return np.mean(loss_buf), epoch_time
 
-    def validation_epoch(self, epoch,prev_preds):
+    def validation_epoch(self, epoch):
         epoch_start_time = time.time()
         loss_buf = []
         self.model.eval()
         preds = None
-        transformed_preds = []
         prev_preds = []
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
@@ -575,7 +576,9 @@ class Train():
                         prev_preds = [torch.as_tensor(p) for p in prev_preds]
                         prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                         pts = torch.cat((prev_preds_tensor, pts), dim=1)
+                        del prev_preds
                         prev_preds = []
+
                         del prev_preds_tensor
                     else:
                         pts = pts.repeat_interleave(2, dim=0)
@@ -600,6 +603,9 @@ class Train():
                         # tensor_to_ply(cm[idx][0], "cm.ply")
                         gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
                         gt_probs.append(gt_prob)
+                        
+                    occupancy_grids.clear()
+                        
                     
                     loss, _, _, _ = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)                    
                     
@@ -613,7 +619,7 @@ class Train():
                     loss_buf.append(loss.item())
                     
                     # empty memory
-                    del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss
+                    del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, occu, probs, cm
                     pbar.set_postfix(val_loss=np.mean(loss_buf) if loss_buf else 0)
                     pbar.update(1)                
             torch.cuda.synchronize()
@@ -626,7 +632,7 @@ class Train():
             self.val_hist['per_epoch_time'].append(epoch_time)
             self.val_hist['val_loss'].append(np.mean(loss_buf))
             val_loss = np.mean(loss_buf) if loss_buf else 0
-            return val_loss, transformed_preds, 
+            return val_loss
 
 
     def _snapshot(self, epoch):
