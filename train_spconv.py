@@ -491,13 +491,13 @@ class Train():
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
-                # transform
-                if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                    for i in range(min(self.batch_size, gt_pts.size(0))):
-                        transformed_pred = self.transform_point_cloud(gt_pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                        prev_preds.append(transformed_pred)   
+                # # transform
+                # if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
+                #     for i in range(min(self.batch_size, gt_pts.size(0))):
+                #         transformed_pred = self.transform_point_cloud(gt_pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                #         prev_preds.append(transformed_pred)   
                         
-                        del transformed_pred
+                #         del transformed_pred
                         
                 # # for debugging
                 # pts = pts.view(self.batch_size, -1, 3)
