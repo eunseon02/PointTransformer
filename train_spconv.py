@@ -40,7 +40,7 @@ import h5py
 from data import GetTarget
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
+writer = SummaryWriter(join(BASE_LOGDIR, "visualize_"))
 
 def occupancy_grid_to_coords(occupancy_grid):
     _, _, H, W, D = occupancy_grid.shape
@@ -169,7 +169,7 @@ class Train():
         prev_preds = None
         prev_preds_val = None
 
-        start_epoch = 90
+        start_epoch = 100
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time, prev_preds = self.train_epoch(epoch, prev_preds)
             writer.add_scalar("Loss/train", train_loss, epoch)
@@ -447,7 +447,7 @@ class Train():
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
   
-                if iter == 1:
+                if iter == 490:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occu, epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
                     self.tensorboard_launcher(gt_occu.dense(), epoch, [0.0, 0.0, 1.0], "GT_train")
