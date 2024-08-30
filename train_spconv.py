@@ -408,7 +408,7 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
-                print(lidar_pos.shape, lidar_quat.shape, data_file_path)
+                print(lidar_pos, lidar_quat, data_file_path)
                 # print(data_file_path)
 
 
@@ -441,9 +441,9 @@ class Train():
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
                     tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
-                    # self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
+                    self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
                     tensor_to_ply(gt_pts[0], f"pts_{iter}.ply")
-                    # self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
+                    self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
                     del prev_preds, prev_preds_tensor
                     prev_preds = []
                 else:
