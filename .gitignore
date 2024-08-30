@@ -19,3 +19,4 @@ _pycache_/
 train_logs/
 train_logs/
 *.pth
+*.h5
