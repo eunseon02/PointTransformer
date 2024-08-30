@@ -94,7 +94,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 32
+        self.batch_size = 2
         self.split = 1
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
@@ -103,26 +103,28 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset2/train'
-        self.train_dataset = PointCloudDataset(self.train_path, None, self.split)
+        self.train_path = 'dataset/train'
+        self.train_paths = ['batch_0', 'batch_1']
+        self.train_dataset = PointCloudDataset(self.train_path, self.train_paths, self.split)
         print(f"Total train dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
         if (len(self.train_dataset.batch_dirs)*self.train_dataset.split) != self.batch_size:
             print(len(self.train_dataset.batch_dirs))
-            raise RuntimeError('Wrong train batch_size')
+            raise RuntimeError(f'Wrong train batch_size : set {(len(self.train_dataset.batch_dirs)*self.train_dataset.split)}')
         
-        self.val_path = 'dataset2/valid'
-        self.val_dataset = PointCloudDataset(self.val_path, None, self.split)
+        self.val_path = 'dataset/valid'
+        self.val_paths = ['batch_0', 'batch_1']
+        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
         if (len(self.val_dataset.batch_dirs)*self.val_dataset.split) != self.batch_size:
             print(len(self.val_dataset.batch_dirs))
-            raise RuntimeError('Wrong valid batch_size')
+            raise RuntimeError(f'Wrong valid batch_size : set {(len(self.val_dataset.batch_dirs)*self.val_dataset.split)}')
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight2"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
+        self.weight_folder = "weight"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
         self.input_shape = (50, 120, 120)
         
         self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
@@ -168,20 +170,20 @@ class Train():
 
         self.model.train()
 
-        start_epoch = 110
+        start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
-            train_loss, epoch_time,cham_loss,occu_loss, cls_losses  = self.train_epoch(epoch)
+            train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
-            writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
-            writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
-            writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
+            # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
+            # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
+            # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
             val_loss = self.validation_epoch(epoch)
             writer.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
                 print("Regenerate train loader")
                 self.train_get_target = GetTarget(self.train_target_dir)
-                self.train_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+                self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
                 # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
             if len(self.val_taget_loader) != len(self.val_loader):
                 print("Regenerate valid loader")
@@ -219,6 +221,7 @@ class Train():
         transformation_matrix = np.eye(4)
         transformation_matrix[:3, :3] = rotation_matrix
         transformation_matrix[:3, 3] = pos.flatten()
+
 
         ones = torch.ones((point_cloud.shape[0], 1), dtype=torch.float32)
         pc_homo = torch.cat([point_cloud, ones], dim=1)
@@ -406,6 +409,8 @@ class Train():
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
                 # print(data_file_path)
+
+
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
@@ -415,10 +420,9 @@ class Train():
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
-                # print(len(self.train_taget_loader))
-                # print(len(self.train_loader))
+
                 if len(self.train_taget_loader) != len(self.train_loader):
-                    print("calculate")
+                    print(f"calculate : not matching {len(self.train_taget_loader)} & {len(self.train_loader)}")
                     output_directory = "train_"
                     file_path = os.path.join(output_directory, f'{iter}.joblib')
                     occupancy_grids = []
@@ -435,10 +439,10 @@ class Train():
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                    # tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
-                    # self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
-                    # tensor_to_ply(gt_pts[0], f"pts_{iter}.ply")
-                    # self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
+                    #tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
+                    #self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
+                    #tensor_to_ply(gt_pts[0], f"pts_{iter}.ply")
+                    #self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
                     del prev_preds, prev_preds_tensor
                     prev_preds = []
                 else:
@@ -451,7 +455,7 @@ class Train():
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
   
-                if iter == 490:
+                if iter == 500:
                     print("tensorboard_launcher")
                     # print("occu", occu.shape)
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
@@ -470,9 +474,9 @@ class Train():
                 occupancy_grids.clear()
                 
                 loss, cham_loss, occu_loss, cls_losses = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)
-                cham_loss_buf.append(cham_loss.item())
-                occu_loss_buf.append(occu_loss.item())
-                cls_losses_buf.append(cls_losses.item())
+                # cham_loss_buf.append(cham_loss.item())
+                # occu_loss_buf.append(occu_loss.item())
+                # cls_losses_buf.append(cls_losses.item())
                 loss.backward()
 
                 # for name, param in self.model.named_parameters():
@@ -499,8 +503,8 @@ class Train():
         epoch_time = time.time() - epoch_start_time
         self.train_hist['per_epoch_time'].append(epoch_time)
         self.train_hist['train_loss'].append(np.mean(loss_buf))
-        return np.mean(loss_buf), epoch_time, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses_buf)
-        # return np.mean(loss_buf), epoch_time
+        # return np.mean(loss_buf), epoch_time, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses)
+        return np.mean(loss_buf), epoch_time
 
     def validation_epoch(self, epoch):
         epoch_start_time = time.time()
@@ -529,10 +533,9 @@ class Train():
                     gt_pts = gt_pts.to(self.device)
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
-                    # print(len(self.val_taget_loader))
-                    # print(len(self.val_loader))
+           
                     if len(self.val_taget_loader) != len(self.val_loader):
-                        print("calculate")
+                        print(f"calculate : not matcing {len(self.val_taget_loader)} and {len(self.val_loader)}")
                         output_directory = "valid_"
                         file_path = os.path.join(output_directory, f'{iter}.joblib')
                         occupancy_grids = []
@@ -543,7 +546,6 @@ class Train():
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                         os.makedirs(output_directory, exist_ok=True)
                         joblib.dump(occupancy_grids, file_path)
-                        print(f"save {iter}.joblib")           
                         
                     # concat
                     if len(prev_preds) > 0:
@@ -566,6 +568,7 @@ class Train():
                     
                     if iter == 120:
                         print("tensorboard_launcher")
+                        # print("occu", occu.shape)
                         self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
                         self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid")
 
@@ -573,9 +576,13 @@ class Train():
                     idx = 0
                     gt_probs = []
                     for idx in range(len(probs)):
+                        # tensor_to_ply(cm[idx][0], "cm.ply")
                         gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
                         gt_probs.append(gt_prob)
+                        
                     occupancy_grids.clear()
+                        
+                    
                     loss, _, _, _ = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)                    
                     
                     # transform
@@ -586,11 +593,17 @@ class Train():
                             del transformed_pred
 
                     loss_buf.append(loss.item())
+                    
                     # empty memory
                     del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, occu, probs, cm
                     pbar.set_postfix(val_loss=np.mean(loss_buf) if loss_buf else 0)
                     pbar.update(1)                
             torch.cuda.synchronize()
+            allocated_final = torch.cuda.memory_allocated()
+            reserved_final = torch.cuda.memory_reserved()
+            logging.info(f"valid -Memory allocated after deleting tensor and emptying cache: {allocated_final / (1024 ** 2):.2f} MB")
+            logging.info(f"valid - Reserved after deleting tensor and emptying cache: {reserved_final / (1024 ** 2):.2f} MB")
+
             epoch_time = time.time() - epoch_start_time
             self.val_hist['per_epoch_time'].append(epoch_time)
             self.val_hist['val_loss'].append(np.mean(loss_buf))
