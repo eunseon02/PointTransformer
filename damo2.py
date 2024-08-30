@@ -7,7 +7,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 import numpy as np
 from config import config as cfg
-from data import PointCloudDataset
+from data2 import PointCloudDataset
 # import open3d as o3d
 import os
 import time
@@ -53,6 +53,7 @@ def tensor_to_ply(tensor, filename):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
+    
 def save_single_occupancy_grid_as_ply(occupancy_grid, file_name="occupancy_grid.ply"):
     # Assume occupancy_grid is of shape (batch_size, 1, H, W, D)
     _, _, H, W, D = occupancy_grid.shape
@@ -91,9 +92,9 @@ def occupancy_grid_to_coords(occupancy_grid):
 
 class Train():
     def __init__(self, args):
-        self.epochs = 300
+        self.epochs = 1
         self.snapshot_interval = 10
-        self.batch_size = 1
+        self.batch_size = 2
         self.split = 1
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
@@ -102,14 +103,12 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.ply_file = "preds.ply"
-        self.val_path = 'sample/train'
-        self.val_paths = ['batch_2']
-        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
+        self.h5_file_path = "lidar_data.h5"
+        self.val_dataset = PointCloudDataset(self.h5_file_path, 'valid')
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if len(self.val_dataset.batch_dirs) != self.batch_size:
-            print(len(self.val_dataset.batch_dirs))
+        if self.val_dataset.batch_count != self.batch_size:
+            print(self.val_dataset.batch_count)
             raise RuntimeError('Wrong batch_size')
         self.parameter = self.model.parameters()
         self.input_shape = (50, 120, 120)
@@ -130,7 +129,7 @@ class Train():
             prev_preds_val = self.demo(epoch, prev_preds_val)
 
     def tensorboard_launcher(self, points, step, color, tag):
-        points = occupancy_grid_to_coords(points)
+        # points = occupancy_grid_to_coords(points)
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
         writer.add_3d(
@@ -284,8 +283,8 @@ class Train():
                 preds, occu, probs, cm = self.model(sptensor)
                 # if iter ==200:
                 #     print("save tensorboard")
-                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "Reconstrunction")
-                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction")
+                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT")
                 # writer.add_scalar("example_scalar", 0.5, 0)
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
