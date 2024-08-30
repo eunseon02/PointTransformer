@@ -7,7 +7,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 import numpy as np
 from config import config as cfg
-from data import PointCloudDataset
+from data2 import PointCloudDataset
 import os
 import time
 import argparse
@@ -103,23 +103,23 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.train_path = 'dataset/train'
-        self.train_paths = ['batch_0', 'batch_1']
-        self.train_dataset = PointCloudDataset(self.train_path, self.train_paths, self.split)
-        print(f"Total train dataset length: {len(self.train_dataset)}")
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True)
-        if (len(self.train_dataset.batch_dirs)*self.train_dataset.split) != self.batch_size:
-            print(len(self.train_dataset.batch_dirs))
-            raise RuntimeError(f'Wrong train batch_size : set {(len(self.train_dataset.batch_dirs)*self.train_dataset.split)}')
+
+        self.h5_file_path = "lidar_data.h5"
+        self.train_dataset = PointCloudDataset(self.h5_file_path, 'train')
+        print(f"Total valid dataset length: {len(self.train_dataset)}")
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
+        if self.train_dataset.batch_count != self.batch_size:
+            print(self.train_dataset.batch_count)
+            raise RuntimeError('Wrong batch_size')        
         
-        self.val_path = 'dataset/valid'
-        self.val_paths = ['batch_0', 'batch_1']
-        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
+        
+        self.val_dataset = PointCloudDataset(self.h5_file_path, 'valid')
         print(f"Total valid dataset length: {len(self.val_dataset)}")
-        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
-        if (len(self.val_dataset.batch_dirs)*self.val_dataset.split) != self.batch_size:
-            print(len(self.val_dataset.batch_dirs))
-            raise RuntimeError(f'Wrong valid batch_size : set {(len(self.val_dataset.batch_dirs)*self.val_dataset.split)}')
+        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
+        if self.val_dataset.batch_count != self.batch_size:
+            print(self.val_dataset.batch_count)
+            raise RuntimeError('Wrong batch_size')
+        
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
@@ -408,6 +408,7 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
+                print(lidar_pos.shape, lidar_quat.shape, data_file_path)
                 # print(data_file_path)
 
 
@@ -439,10 +440,10 @@ class Train():
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                    #tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
-                    #self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
-                    #tensor_to_ply(gt_pts[0], f"pts_{iter}.ply")
-                    #self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
+                    tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
+                    # self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
+                    tensor_to_ply(gt_pts[0], f"pts_{iter}.ply")
+                    # self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
                     del prev_preds, prev_preds_tensor
                     prev_preds = []
                 else:

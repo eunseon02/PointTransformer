@@ -24,7 +24,6 @@ class PointCloudDataset(Dataset):
         self.batches = []
         self.total_len = 0
 
-        # 'train' 또는 'valid' 그룹만 고려
         if self.split not in self.h5_file:
             raise KeyError(f"The split '{self.split}' does not exist in the HDF5 file.")
         
@@ -60,7 +59,7 @@ class PointCloudDataset(Dataset):
         pts_gt_data = group[f'{pts_dataset_name}_gt'][:].astype('float32')
         position = group[f'position_{file_idx:04d}'][:].astype('float32')
         quaternion = group[f'quaternion_{file_idx:04d}'][:].astype('float32')
-        return pts_data, pts_gt_data, position, quaternion
+        return pts_data, pts_gt_data, position, quaternion, pts_dataset_name
 
     
     def close(self):
