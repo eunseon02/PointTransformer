@@ -250,7 +250,7 @@ class Train():
             for iter, batch  in enumerate(self.val_loader):
                 print(f"{iter}/{len((self.val_loader))}")
                 # print("iter", iter)
-                pts, gt_pts, lidar_pos, lidar_quat = batch
+                pts, gt_pts, lidar_pos, lidar_quat, _ = batch
     
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
@@ -330,7 +330,7 @@ class Train():
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model_path', type=str, default='weight2/model_epoch_best_139.pth', metavar='N',
+    parser.add_argument('--model_path', type=str, default='weight2/model_epoch_best_109.pth', metavar='N',
                         help='Path to load model')
     args = parser.parse_args()
     return args

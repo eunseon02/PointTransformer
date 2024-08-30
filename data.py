@@ -105,6 +105,7 @@ class PointCloudDataset(Dataset):
         df = pd.read_csv(csv_file_path)
         file_path = file_path.replace("dataset/", '')
         file_path = file_path.replace("sample/", '')
+        file_path = file_path.replace("dataset2/", '')
 
         df['delta_quat_w'] = df['delta_quat_w'].apply(self.convert_to_float)
         df['delta_quat_x'] = df['delta_quat_x'].apply(self.convert_to_float)

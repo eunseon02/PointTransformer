@@ -30,7 +30,7 @@ def display_ply_files(file_path1, file_path2):
 
 if __name__ == "__main__":
     # Replace with your actual PLY file paths
-    file_path1 = "transformed_pred9.ply"
-    file_path2 = "pts_9.ply"
+    file_path1 = "transformed_pred_3.ply"
+    file_path2 = "pts_3.ply"
     
     display_ply_files(file_path1, file_path2)
