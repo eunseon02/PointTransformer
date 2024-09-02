@@ -42,16 +42,12 @@ class PointCloudDataset(Dataset):
 
     def __getitem__(self, idx):
         batch_idx = idx % len(self.batches)
-        
-        # file_idx를 ff_update와 ff_step으로 분리
         file_idx = idx // len(self.batches)
-        ff_update = file_idx // 75  # ff_update 계산
-        ff_step = file_idx % 75     # ff_step 계산
         
         group_name, datasets = self.batches[batch_idx]
+        pts_dataset_name = f'pts_{file_idx:04d}'
         
-        # 데이터셋 이름 생성
-        pts_dataset_name = f'pts_{ff_update:02d}{ff_step:02d}'
+        # print(f"idx: {idx}, batch_idx: {batch_idx}, file_idx: {file_idx}, pts_dataset_name: {pts_dataset_name}")
         
         if pts_dataset_name not in datasets:
             raise IndexError(f"idx = {idx} : {pts_dataset_name} not found in datasets of group {group_name}")
@@ -60,11 +56,9 @@ class PointCloudDataset(Dataset):
         
         pts_data = group[pts_dataset_name][:].astype('float32')
         pts_gt_data = group[f'{pts_dataset_name}_gt'][:].astype('float32')
-        position = group[f'position_{ff_update:02d}{ff_step:02d}'][:].astype('float32')
-        quaternion = group[f'quaternion_{ff_update:02d}{ff_step:02d}'][:].astype('float32')
-        
+        position = group[f'position_{file_idx:04d}'][:].astype('float32')
+        quaternion = group[f'quaternion_{file_idx:04d}'][:].astype('float32')
         return pts_data, pts_gt_data, position, quaternion, pts_dataset_name
-
 
     
     def close(self):
