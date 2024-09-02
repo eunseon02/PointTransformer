@@ -40,13 +40,12 @@ import h5py
 from data import GetTarget
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check"))
+writer = SummaryWriter(join(BASE_LOGDIR, "check2"))
 
 def occupancy_grid_to_coords(occupancy_grid):
     _, _, H, W, D = occupancy_grid.shape
     occupancy_grid = occupancy_grid[0, 0]
     indices = torch.nonzero(occupancy_grid > 0, as_tuple=False) 
-    # print(indices.dtype) 
     return indices
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
@@ -123,8 +122,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
+        self.weight_folder = "weight2"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
         self.input_shape = (50, 120, 120)
         
         self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
@@ -149,6 +148,9 @@ class Train():
         # points = occupancy_grid_to_coords(points)
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
+        if num_points == 0:
+            print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
+            return
         writer.add_3d(
         tag,
         {
@@ -486,7 +488,7 @@ class Train():
                 #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
                 #     else:
                 #         print(f"Layer: {name} | No gradient calculated!")
-                self.optimizer.step()
+                # self.optimizer.step()
                 loss_buf.append(loss.item())
                 
                 # transform
@@ -564,10 +566,9 @@ class Train():
                     pts = torch.nan_to_num(pts, nan=0.0)
                     sptensor = self.preprocess(pts)
                     gt_occu = self.occupancy_grid_(gt_pts)
-                    preds, occu, probs, cm = self.model(sptensor)
+                    preds, occu, probs, cm = self.model(sptensor)                    
                     
-                    
-                    if iter == 120:
+                    if iter == 2:
                         print("tensorboard_launcher")
                         # print("occu", occu.shape)
                         self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")

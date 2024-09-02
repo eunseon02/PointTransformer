@@ -176,7 +176,7 @@ class NSLoss(nn.Module):
 
         # print("loss1", loss1)
         # print("loss2", loss2)
-        cls_losses = torch.tensor(0.0, requires_grad=True)
+        cls_losses = torch.tensor(0.0).to(preds.device)
         for idx in range(len(probs)):
             cls_loss = self.cls_loss(probs[idx].squeeze(-1), gt_probs[idx].to(preds.device))
             cls_losses = cls_losses + cls_loss
