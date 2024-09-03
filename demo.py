@@ -7,7 +7,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 import numpy as np
 from config import config as cfg
-from data import PointCloudDataset
+from data2 import PointCloudDataset
 # import open3d as o3d
 import os
 import time
@@ -93,24 +93,21 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 1
-        self.split = 1
+        self.batch_size = 32
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
         self.model_path = args.model_path
         if self.model_path != '':
             self._load_pretrain(args.model_path)
-        
-        self.ply_file = "preds.ply"
-        self.val_path = 'dataset/train'
-        self.val_paths = ['batch_2']
-        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
+        self.h5_file_path = "lidar_data.h5"
+        self.val_dataset = PointCloudDataset(self.h5_file_path, 'valid')
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if len(self.val_dataset.batch_dirs) != self.batch_size:
-            print(len(self.val_dataset.batch_dirs))
+        if self.val_dataset.batch_count != self.batch_size:
+            print(self.val_dataset.batch_count)
             raise RuntimeError('Wrong batch_size')
+        
         self.parameter = self.model.parameters()
         self.input_shape = (50, 120, 120)
         
@@ -129,17 +126,20 @@ class Train():
         prev_preds_val = self.demo(0, prev_preds_val)
 
     def tensorboard_launcher(self, points, step, color, tag):
-        points = occupancy_grid_to_coords(points)
+        # points = occupancy_grid_to_coords(points)
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
-        writer.add_3d(
-        tag,
-        {
-            "vertex_positions": points.float(), # (N, 3)
-            "vertex_colors": colors.float()  # (N, 3)
-        },
-        step)
-        # print("save")
+        if num_points == 0:
+            print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
+            # return
+        else:
+            writer.add_3d(
+            tag,
+            {
+                "vertex_positions": points.float(), # (N, 3)
+                "vertex_colors": colors.float()  # (N, 3)
+            },
+            step)
     def transform_point_cloud(self, point_cloud, pos, quat):
         """
         Transform point cloud to world frame using position and quaternion.
@@ -244,9 +244,9 @@ class Train():
         loss_buf = []
         # self.model.eval()
         preds = None
-        transformed_preds = []
+        prev_preds = []
+
         with torch.no_grad():
-            print("len:", len((self.val_loader)))
             for iter, batch  in enumerate(self.val_loader):
                 print(f"{iter}/{len((self.val_loader))}")
                 # print("iter", iter)
@@ -265,12 +265,18 @@ class Train():
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
                 
+
                 # concat
-                if prev_preds is not None:
+                if len(prev_preds) > 0:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                    del prev_preds_tensor
+                    # tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
+                    # self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
+                    # tensor_to_ply(gt_pts[0], f"pts_{iter}.ply")
+                    # self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
+                    del prev_preds, prev_preds_tensor
+                    prev_preds = []
                 else:
                     pts = pts.repeat_interleave(2, dim=0)
                     pts = pts.view(self.batch_size, -1, 3)
@@ -283,9 +289,9 @@ class Train():
                 preds, occu, probs, cm = self.model(sptensor)
                 # if iter ==200:
                 #     print("save tensorboard")
-                
-                self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "Reconstrunction")
-                self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction")
+                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT")
+                self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 1.0, 0.0], "pts")
                 # writer.add_scalar("example_scalar", 0.5, 0)
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
@@ -296,15 +302,14 @@ class Train():
 
 
                 # transform
-                transformed_preds = []
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                     for i in range(min(self.batch_size, preds.size(0))):
                         transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                        transformed_preds.append(transformed_pred.tolist())
+                        prev_preds.append(transformed_pred.tolist())
                         del transformed_pred
 
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds            
-        return transformed_preds
+        return None
         
     def _load_pretrain(self, pretrain):
         # Load checkpoint
