@@ -36,6 +36,8 @@ class PointCloudDataset(Dataset):
                 self.batch_count += 1
                 self.total_len += len(datasets)
                 self.batches.append((group_name, datasets))
+                
+
         
     def __len__(self):
         return self.total_len

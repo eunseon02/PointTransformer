@@ -40,7 +40,7 @@ import h5py
 from data import GetTarget
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check3"))
+writer = SummaryWriter(join(BASE_LOGDIR, "check4"))
 
 def occupancy_grid_to_coords(occupancy_grid):
     _, _, H, W, D = occupancy_grid.shape
@@ -122,8 +122,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight3"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log3.txt'
+        self.weight_folder = "weight4"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log4.txt'
         self.input_shape = (50, 120, 120)
         
         self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
@@ -173,7 +173,7 @@ class Train():
 
         self.model.train()
 
-        start_epoch = 0
+        start_epoch = 50
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
@@ -456,7 +456,9 @@ class Train():
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
-  
+                
+                # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
+                # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
                 if iter == 490:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
@@ -559,6 +561,10 @@ class Train():
                     
                     preds, occu, probs, cm = self.model(sptensor)                    
                     
+                    
+                    self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
+                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
+
                     if iter == 120:
                         print("tensorboard_launcher")
                         self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
