@@ -102,15 +102,13 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.ply_file = "preds.ply"
-        self.val_path = 'dataset/train'
-        self.val_paths = ['batch_2']
-        self.val_dataset = PointCloudDataset(self.val_path, self.val_paths, self.split)
+        self.val_dataset = PointCloudDataset(self.h5_file_path, 'valid')
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if len(self.val_dataset.batch_dirs) != self.batch_size:
-            print(len(self.val_dataset.batch_dirs))
+        if self.val_dataset.batch_count != self.batch_size:
+            print(self.val_dataset.batch_count)
             raise RuntimeError('Wrong batch_size')
+        
         self.parameter = self.model.parameters()
         self.input_shape = (50, 120, 120)
         
