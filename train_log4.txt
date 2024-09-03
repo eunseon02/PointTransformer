@@ -1,0 +1,10 @@
+Epoch [51/300] - Train Loss: 0.6635, Validation Loss: 0.6484, Time: 214.8925s
+Epoch [52/300] - Train Loss: 0.6635, Validation Loss: 0.6370, Time: 215.6411s
+Epoch [53/300] - Train Loss: 0.6635, Validation Loss: 0.6437, Time: 213.4751s
+Epoch [54/300] - Train Loss: 0.6635, Validation Loss: 0.6551, Time: 211.2043s
+Epoch [55/300] - Train Loss: 0.6635, Validation Loss: 0.6503, Time: 211.3888s
+Epoch [56/300] - Train Loss: 0.6635, Validation Loss: 0.6682, Time: 211.4831s
+Epoch [57/300] - Train Loss: 0.6636, Validation Loss: 0.6726, Time: 212.4155s
+Epoch [58/300] - Train Loss: 0.6636, Validation Loss: 0.6376, Time: 213.3759s
+Epoch [59/300] - Train Loss: 0.6637, Validation Loss: 0.6467, Time: 212.8631s
+Epoch [60/300] - Train Loss: 0.6636, Validation Loss: 0.6308, Time: 212.3522s
