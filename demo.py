@@ -330,7 +330,7 @@ class Train():
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model_path', type=str, default='weight/model_epoch_best_289.pth', metavar='N',
+    parser.add_argument('--model_path', type=str, default='weight2/model_epoch_best_39.pth', metavar='N',
                         help='Path to load model')
     args = parser.parse_args()
     return args

@@ -122,7 +122,7 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight"
+        self.weight_folder = "weight2"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
         self.input_shape = (50, 120, 120)
         
