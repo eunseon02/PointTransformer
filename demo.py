@@ -286,6 +286,7 @@ class Train():
                 
                 self.tensorboard_launcher(occu, iter, [1.0, 0.0, 0.0], "Reconstrunction")
                 self.tensorboard_launcher(gt_occu.dense(), iter, [0.0, 0.0, 1.0], "GT")
+                self.tensorboard_launcher(pts_occu.dense(), iter, [0.0, 1.0, 0.0], "pts")
                 # writer.add_scalar("example_scalar", 0.5, 0)
 
                 # save_single_occupancy_grid_as_ply(gt_occu.dense(), 'gt_occu.ply')
