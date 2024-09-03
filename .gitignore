@@ -15,9 +15,10 @@ valid_/
 *.ply
 *.profile
 logs/
-_pycache_/
+__pycache__/
 train_logs/
 train_logs/
 *.pth
 *.h5
 logs/
+
