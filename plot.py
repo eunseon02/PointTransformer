@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import re
 
 # txt 파일 경로
-file_path = 'train.txt'
+file_path = 'voxels_torch.txt'
 
 # 손실 데이터를 저장할 리스트
 epochs = []

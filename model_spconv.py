@@ -118,6 +118,11 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU()
         )
+        self.Decoder1 = spconv.SparseSequential(
+            spconv.SubMConv3d(dec_ch[0], self.num_point_features*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
+            nn.BatchNorm1d(self.num_point_features*self.max_num_points_per_voxel, momentum=0.1),
+            nn.ReLU()
+        )
         self.cls2 = spconv.SparseSequential(
             spconv.SubMConv3d(dec_ch[0], 3, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
@@ -172,14 +177,22 @@ class PointCloud3DCNN(nn.Module):
         cm.append(cm_)
         
         occu = self.conv(dec_0.dense())
-        coords = self.fc1(dec_0.features)
-        if coords.requires_grad:
-            coords.retain_grad()
-        coords = self.postprocess(dec_0, coords)
-        if coords.requires_grad:
-            coords.retain_grad()
+        # feat = self.fc1(dec_0.features)
+        # if feat.requires_grad:
+        #     feat.retain_grad()
+        # feat = self.postprocess(dec_0, feat)
+        feat = self.Decoder1(dec_0)
+        feat = self.postprocess(feat)
+        if feat.requires_grad:
+            feat.retain_grad()
             
-        return coords, occu, probs, cm
+        feat = feat.view(self.batch_size, -1, 3)
+
+        # coords = self.indices_postprocess(dec_0)
+        # print(coords.shape)
+        
+            
+        return feat, occu, probs, cm
     
     def cls_postprocess(self, feat_indices, pred_prob):
         batch_indices = feat_indices[:, 0]
@@ -209,29 +222,28 @@ class PointCloud3DCNN(nn.Module):
 
         return cm_batch, pred_prob_batch
         
-    def postprocess(self, preds, predicted_coords):
+    def postprocess(self, preds):
         import torch.nn.functional as F
 
         batch_size = preds.batch_size
         output_coords = []
         
         batch_indices = preds.indices[:, 0]
-        batch_counts = torch.zeros(batch_size, device=predicted_coords.device)
+        batch_counts = torch.zeros(batch_size, device=preds.indices.device)
         for batch_idx in range(batch_size):
             batch_counts[batch_idx] = (batch_indices == batch_idx).sum()
 
         max_num_points = batch_counts.max().int()
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)
-            batch_coords = predicted_coords[batch_mask]
-            
+            batch_coords = preds.features[batch_mask]            
             if batch_coords.shape[0] > max_num_points:
                 print("output : ", batch_coords.shape[0])
                 batch_coords = batch_coords[:max_num_points]
             
             padding_size = max_num_points - batch_coords.shape[0]
             if padding_size > 0:
-                padding = torch.zeros((padding_size, 3), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
+                padding = torch.zeros((padding_size, 9), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
                 padded_batch_coords = torch.cat([batch_coords, padding], dim=0)
 
             else:
@@ -240,6 +252,22 @@ class PointCloud3DCNN(nn.Module):
 
         output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
         return output
+    
+    
+    def indices_postprocess(self, preds):
+        batch_size = preds.batch_size
+        batch_indices = [[] for _ in range(batch_size)]
+
+        for i in range(batch_size):
+            batch_indices[i] = preds.indices[preds.indices[:, 0] == i][:, 1:]
+
+        max_len = max(len(b) for b in batch_indices)
+        padded_indices = torch.zeros((batch_size, max_len, 3), dtype=preds.indices.dtype)
+
+        for i in range(batch_size):
+            padded_indices[i, :batch_indices[i].shape[0], :] = batch_indices[i]
+            
+        return padded_indices
 
     def process_pointclouds(self, pc):
         np.random.seed(50051)
