@@ -183,7 +183,7 @@ class NSLoss(nn.Module):
         cls_losses = cls_losses/ len(probs)
 
 
-        return cham_loss + occu_loss + cls_losses,cham_loss, occu_loss, cls_losses
+        return 0.1*cham_loss + 0.3*occu_loss + cls_losses,cham_loss, occu_loss, cls_losses
     
 
         

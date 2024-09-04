@@ -40,7 +40,7 @@ import h5py
 from data import GetTarget
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check4"))
+writer = SummaryWriter(join(BASE_LOGDIR, "check3"))
 
 def occupancy_grid_to_coords(occupancy_grid):
     _, _, H, W, D = occupancy_grid.shape
@@ -173,7 +173,7 @@ class Train():
 
         self.model.train()
 
-        start_epoch = 50
+        start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
@@ -481,7 +481,7 @@ class Train():
                 # cham_loss_buf.append(cham_loss.item())
                 # occu_loss_buf.append(occu_loss.item())
                 # cls_losses_buf.append(cls_losses.item())
-                cls_losses.backward()
+                loss.backward()
 
                 # for name, param in self.model.named_parameters():
                 #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
