@@ -126,7 +126,7 @@ class Train():
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
         self.input_shape = (50, 120, 120)
         
-        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -0.5])
+        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -1.0])
         self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 1.5])
         
         self.train_occu = []
@@ -536,9 +536,6 @@ class Train():
                     gt_pts = gt_pts.to(self.device)
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
-                    self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
-                    # print(pts.shape)
-                    # print(pts[0])
 
            
                     if len(self.val_taget_loader) != len(self.val_loader):
@@ -577,10 +574,10 @@ class Train():
                     # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
                     # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
 
-                    # if iter == 120:
-                    #     print("tensorboard_launcher")
-                    #     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
-                    #     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid")
+                    if iter == 120:
+                        print("tensorboard_launcher")
+                        self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
+                        self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid")
 
                     ## get_target
                     idx = 0
