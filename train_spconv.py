@@ -40,7 +40,7 @@ import h5py
 from data import GetTarget
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check3"))
+writer = SummaryWriter(join(BASE_LOGDIR, "check"))
 
 def occupancy_grid_to_coords(occupancy_grid):
     _, _, H, W, D = occupancy_grid.shape
@@ -93,7 +93,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 32
+        self.batch_size = 64
         self.split = 1
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
@@ -122,16 +122,15 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight4"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log4.txt'
+        self.weight_folder = "weight"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
         self.input_shape = (50, 120, 120)
         
-        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -3.0])
-        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 3.0])
+        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -0.5])
+        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 1.5])
         
         self.train_occu = []
         self.valid_occu = []
-        
         
         self.train_target_dir = "train_"
         self.train_get_target = GetTarget(self.train_target_dir)
@@ -416,7 +415,6 @@ class Train():
                 # print(lidar_pos, lidar_quat, data_file_path)
                 # print(data_file_path)
 
-
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
@@ -426,6 +424,8 @@ class Train():
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
+                # self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "pts")
+                # self.tensorboard_launcher(gt_pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
 
                 if len(self.train_taget_loader) != len(self.train_loader):
                     print(f"calculate : not matching {len(self.train_taget_loader)} & {len(self.train_loader)}")
@@ -536,6 +536,10 @@ class Train():
                     gt_pts = gt_pts.to(self.device)
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
+                    self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
+                    # print(pts.shape)
+                    # print(pts[0])
+
            
                     if len(self.val_taget_loader) != len(self.val_loader):
                         print(f"calculate : not matcing {len(self.val_taget_loader)} and {len(self.val_loader)}")
@@ -573,10 +577,10 @@ class Train():
                     # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
                     # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
 
-                    if iter == 120:
-                        print("tensorboard_launcher")
-                        self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
-                        self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid")
+                    # if iter == 120:
+                    #     print("tensorboard_launcher")
+                    #     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
+                    #     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid")
 
                     ## get_target
                     idx = 0

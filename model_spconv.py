@@ -186,7 +186,7 @@ class PointCloud3DCNN(nn.Module):
         if feat.requires_grad:
             feat.retain_grad()
             
-        feat = feat.view(32, -1, 3)
+        feat = feat.view(self.batch_size, -1, 3)
 
         # coords = self.indices_postprocess(dec_0)
         # print(coords.shape)
