@@ -37,6 +37,7 @@ class PointCloud3DCNN(nn.Module):
         enc_ch = self.ENC_CHANNELS
         dec_ch = self.DEC_CHANNELS
         self.batch_size = batch_size
+        self.device = cfg.device
         self.num_point_features = 3
         self.max_num_points_per_voxel = 3
         self.Encoder1 = spconv.SparseSequential(
@@ -177,22 +178,18 @@ class PointCloud3DCNN(nn.Module):
         cm.append(cm_)
         
         occu = self.conv(dec_0.dense())
-        # feat = self.fc1(dec_0.features)
-        # if feat.requires_grad:
-        #     feat.retain_grad()
-        # feat = self.postprocess(dec_0, feat)
         feat = self.Decoder1(dec_0)
-        feat = self.postprocess(feat)
+        feat = self.feat_postprocess(feat)
         if feat.requires_grad:
             feat.retain_grad()
-            
-        feat = feat.view(self.batch_size, -1, 3)
-
-        # coords = self.indices_postprocess(dec_0)
-        # print(coords.shape)
         
+        
+        coords = self.indices_postprocess(dec_0)
+        preds = self.postprocess(feat, coords)
+        
+        preds = preds.view(self.batch_size, -1, 3)
             
-        return feat, occu, probs, cm
+        return preds, occu, probs, cm
     
     def cls_postprocess(self, feat_indices, pred_prob):
         batch_indices = feat_indices[:, 0]
@@ -222,7 +219,7 @@ class PointCloud3DCNN(nn.Module):
 
         return cm_batch, pred_prob_batch
         
-    def postprocess(self, preds):
+    def feat_postprocess(self, preds):
         import torch.nn.functional as F
 
         batch_size = preds.batch_size
@@ -253,11 +250,26 @@ class PointCloud3DCNN(nn.Module):
         output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
         return output
     
-    
+    def postprocess(self, feat, coords):
+        batch_size = feat.shape[0]
+        all_preds = []
+        for batch_idx in range(batch_size):
+            coords_batch = coords[batch_idx]
+            feat_batch = feat[batch_idx]
+            feat_batch = feat_batch.view(-1, self.max_num_points_per_voxel, 3)
+            
+            coords_batch = coords_batch[:, [2, 1, 0]]
+            voxel_centers = (coords_batch * torch.tensor([0.05, 0.05, 0.05])) + torch.tensor([-3.0, -3.0, -1.0]) + torch.tensor([0.025, 0.025, 0.025])
+            pred = torch.where(feat_batch == 0, torch.zeros_like(feat_batch), (voxel_centers.unsqueeze(1).to(self.device) + feat_batch) / torch.tensor([0.05, 0.05, 0.05]).to(self.device))
+            preds = pred.view(-1, self.num_point_features * self.max_num_points_per_voxel)
+            all_preds.append(preds)
+        all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
+        return all_preds
+
+
     def indices_postprocess(self, preds):
         batch_size = preds.batch_size
         batch_indices = [[] for _ in range(batch_size)]
-
         for i in range(batch_size):
             batch_indices[i] = preds.indices[preds.indices[:, 0] == i][:, 1:]
 
@@ -274,7 +286,6 @@ class PointCloud3DCNN(nn.Module):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
         pc = pc.to(device)
-
 
         # Voxel generator
         gen = PointToVoxel(
