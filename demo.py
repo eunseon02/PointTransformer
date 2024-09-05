@@ -118,7 +118,7 @@ class Train():
     def run(self):
         print('start!!')
 
-        self.model.train()
+        self.model.eval()
         prev_preds_val = None
 
         # start_epoch = 0
@@ -335,7 +335,7 @@ class Train():
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model_path', type=str, default='weight2/model_epoch_best_39.pth', metavar='N',
+    parser.add_argument('--model_path', type=str, default='model_epoch_best_149.pth', metavar='N',
                         help='Path to load model')
     args = parser.parse_args()
     return args
