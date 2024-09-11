@@ -23,6 +23,7 @@ class PointCloudDataset(Dataset):
         
         self.batches = []
         self.total_len = 0
+        batch_size = 5
 
         if self.split not in self.h5_file:
             raise KeyError(f"The split '{self.split}' does not exist in the HDF5 file.")
@@ -36,6 +37,9 @@ class PointCloudDataset(Dataset):
                 self.batch_count += 1
                 self.total_len += len(datasets)
                 self.batches.append((group_name, datasets))
+                
+            if batch_size is not None and self.batch_count >= batch_size:
+                break
                 
 
         

@@ -38,103 +38,98 @@ class PointCloud3DCNN(nn.Module):
         dec_ch = self.DEC_CHANNELS
         self.batch_size = batch_size
         self.device = cfg.device
-        self.num_point_features = 3
+        self.num_point_features = 4
         self.max_num_points_per_voxel = 3
         self.Encoder1 = spconv.SparseSequential(
-            spconv.SubMConv3d(self.num_point_features*self.max_num_points_per_voxel, enc_ch[0], kernel_size=3, stride=1, indice_key="subm1"),
+            spconv.SubMConv4d(self.num_point_features*self.max_num_points_per_voxel, enc_ch[0], kernel_size=3, stride=1, indice_key="subm1"),
             nn.BatchNorm1d(enc_ch[0], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder2 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[0], enc_ch[1], kernel_size=3, stride=2, padding=1,indice_key="spconv2"),
+            spconv.SparseConv4d(enc_ch[0], enc_ch[1], kernel_size=3, stride=2, padding=1,indice_key="spconv2"),
             nn.BatchNorm1d(enc_ch[1], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[1], enc_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm2"),
+            spconv.SubMConv4d(enc_ch[1], enc_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm2"),
             nn.BatchNorm1d(enc_ch[1], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder3 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[1], enc_ch[2], kernel_size=3, stride=2, padding=1,indice_key="spconv3"), 
+            spconv.SparseConv4d(enc_ch[1], enc_ch[2], kernel_size=3, stride=2, padding=1,indice_key="spconv3"), 
             nn.BatchNorm1d(enc_ch[2], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[2], enc_ch[2], kernel_size=3, stride=1, padding=1,indice_key="subm3"),
+            spconv.SubMConv4d(enc_ch[2], enc_ch[2], kernel_size=3, stride=1, padding=1,indice_key="subm3"),
             nn.BatchNorm1d(enc_ch[2], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder4 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[2], enc_ch[3], kernel_size=3, stride=2, padding=1,indice_key="spconv4"),
+            spconv.SparseConv4d(enc_ch[2], enc_ch[3], kernel_size=3, stride=2, padding=1,indice_key="spconv4"),
             nn.BatchNorm1d(enc_ch[3], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[3], enc_ch[3], kernel_size=3, stride=1, padding=1,indice_key="subm4"),
+            spconv.SubMConv4d(enc_ch[3], enc_ch[3], kernel_size=3, stride=1, padding=1,indice_key="subm4"),
             nn.BatchNorm1d(enc_ch[3], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder5 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[3], enc_ch[4], kernel_size=3, stride=2, padding=1,indice_key="spconv5"),
+            spconv.SparseConv4d(enc_ch[3], enc_ch[4], kernel_size=3, stride=2, padding=1,indice_key="spconv5"),
             nn.BatchNorm1d(enc_ch[4], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[4], enc_ch[4], kernel_size=3, stride=1, padding=1,indice_key="subm5"),
+            spconv.SubMConv4d(enc_ch[4], enc_ch[4], kernel_size=3, stride=1, padding=1,indice_key="subm5"),
             nn.BatchNorm1d(enc_ch[4], momentum=0.1),
             nn.ReLU()
         )
         ## decoder
         self.Decoder5 = spconv.SparseSequential(
-            spconv.SparseInverseConv3d(dec_ch[4], dec_ch[3], kernel_size=3, indice_key="spconv5"),
+            spconv.SparseInverseConv4d(dec_ch[4], dec_ch[3], kernel_size=3, indice_key="spconv5"),
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(dec_ch[3], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm5d"), 
+            spconv.SubMConv4d(dec_ch[3], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm5d"), 
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
         )
         self.cls5 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[3], 3, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
+            spconv.SubMConv4d(dec_ch[3], 3, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
         )
         self.Decoder4 = spconv.SparseSequential(
-            spconv.SparseInverseConv3d(dec_ch[3], dec_ch[2], kernel_size=3, indice_key="spconv4"),
+            spconv.SparseInverseConv4d(dec_ch[3], dec_ch[2], kernel_size=3, indice_key="spconv4"),
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm4d"),  
+            spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm4d"),  
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU()
         )
         self.cls4 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[2], 3, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
+            spconv.SubMConv4d(dec_ch[2], 3, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
         )
         self.Decoder3 = spconv.SparseSequential(
-            spconv.SparseInverseConv3d(dec_ch[2], dec_ch[1], kernel_size=3, indice_key="spconv3"),
+            spconv.SparseInverseConv4d(dec_ch[2], dec_ch[1], kernel_size=3, indice_key="spconv3"),
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(dec_ch[1], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm3d"),  
+            spconv.SubMConv4d(dec_ch[1], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm3d"),  
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU()
         )
         self.cls3 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[1], 3, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
+            spconv.SubMConv4d(dec_ch[1], 3, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
         )
         self.Decoder2 = spconv.SparseSequential(
-            spconv.SparseInverseConv3d(dec_ch[1], dec_ch[0], kernel_size=3, indice_key="spconv2"),
+            spconv.SparseInverseConv4d(dec_ch[1], dec_ch[0], kernel_size=3, indice_key="spconv2"),
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm2d"), 
+            spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm2d"), 
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU()
         )
         self.Decoder1 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[0], self.num_point_features*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
+            spconv.SubMConv4d(dec_ch[0], self.num_point_features*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
             nn.BatchNorm1d(self.num_point_features*self.max_num_points_per_voxel, momentum=0.1),
             nn.ReLU()
         )
         self.cls2 = spconv.SparseSequential(
-            spconv.SubMConv3d(dec_ch[0], 3, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
+            spconv.SubMConv4d(dec_ch[0], 3, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
-        self.occu = spconv.SparseSequential(
-            spconv.ToDense(),
-            nn.Conv3d(16, 16, kernel_size=3, padding=1)
-        )
+        self.conv1d = nn.Conv1d(in_channels=dec_ch[0], out_channels=dec_ch[0], kernel_size=2, stride=1)
         self.conv = nn.Conv3d(16, 1, kernel_size=3, padding=1)
         self.dense = spconv.ToDense()
-        self.fc1 = nn.Linear(16,3)
-        self.fc2 = nn.Linear(16,1)
 
     def forward(self, sparse_tensor):
         probs = []
@@ -176,8 +171,15 @@ class PointCloud3DCNN(nn.Module):
         cm_, pred_prob = self.cls_postprocess(feat_cls2.indices, pred_prob)
         probs.append(pred_prob)
         cm.append(cm_)
+        # print(dec_0.indices.shape)
+        batch_size, channels, depth, height, width, time = dec_0.dense().shape
+        x = dec_0.dense().permute(0, 2, 3, 4, 1, 5).contiguous()
+        x = x.view(-1, channels, time)
+        x = self.conv1d(x)
+        x = x.view(batch_size, depth, height, width, channels)
+        f_occu = x.permute(0, 4, 1, 2, 3)
         
-        occu = self.conv(dec_0.dense())
+        occu = self.conv(f_occu)
         occu = torch.sigmoid(occu)
 
         feat = self.Decoder1(dec_0)
@@ -186,6 +188,7 @@ class PointCloud3DCNN(nn.Module):
             feat.retain_grad()
         
         coords = self.indices_postprocess(dec_0)
+        # print("coords", coords.shape)
         preds = self.postprocess(feat, coords)
         
         preds = preds.view(self.batch_size, -1, 3)
@@ -241,7 +244,7 @@ class PointCloud3DCNN(nn.Module):
             
             padding_size = max_num_points - batch_coords.shape[0]
             if padding_size > 0:
-                padding = torch.zeros((padding_size, 9), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
+                padding = torch.zeros((padding_size, self.max_num_points_per_voxel*self.num_point_features), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
                 padded_batch_coords = torch.cat([batch_coords, padding], dim=0)
 
             else:
@@ -257,12 +260,12 @@ class PointCloud3DCNN(nn.Module):
         for batch_idx in range(batch_size):
             coords_batch = coords[batch_idx]
             feat_batch = feat[batch_idx]
-            feat_batch = feat_batch.view(-1, self.max_num_points_per_voxel, 3)
-            
+            feat_batch = feat_batch.view(-1, self.max_num_points_per_voxel, self.num_point_features)
+            feat_batch = feat_batch[:, :, :3] ## remove t dim
             coords_batch = coords_batch[:, [2, 1, 0]]
             voxel_centers = (coords_batch * torch.tensor([0.05, 0.05, 0.05])) + torch.tensor([-3.0, -3.0, -1.0]) + torch.tensor([0.025, 0.025, 0.025])
             pred = torch.where(feat_batch == 0, torch.zeros_like(feat_batch), (voxel_centers.unsqueeze(1).to(self.device) + feat_batch) / torch.tensor([0.05, 0.05, 0.05]).to(self.device))
-            preds = pred.view(-1, self.num_point_features * self.max_num_points_per_voxel)
+            preds = pred.view(-1, 3 * self.max_num_points_per_voxel)
             all_preds.append(preds)
         all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
         return all_preds
@@ -275,7 +278,7 @@ class PointCloud3DCNN(nn.Module):
             batch_indices[i] = preds.indices[preds.indices[:, 0] == i][:, 1:]
 
         max_len = max(len(b) for b in batch_indices)
-        padded_indices = torch.zeros((batch_size, max_len, 3), dtype=preds.indices.dtype)
+        padded_indices = torch.zeros((batch_size, max_len, 4), dtype=preds.indices.dtype)
 
         for i in range(batch_size):
             padded_indices[i, :batch_indices[i].shape[0], :] = batch_indices[i]

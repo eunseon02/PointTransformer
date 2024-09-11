@@ -101,7 +101,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 600
         self.snapshot_interval = 10
-        self.batch_size = 32
+        self.batch_size = 5
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -142,7 +142,7 @@ class Train():
         self.voxel_size = torch.tensor([0.05, 0.05, 0.05]).to(self.device)
         self.vsize_xyz=[0.05, 0.05, 0.05]
         self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
-        self.input_shape = (50, 120, 120)
+        self.input_shape = (50, 120, 120, 2)
         
         self.train_target_dir = "train_"
         self.train_get_target = GetTarget(self.train_target_dir)
@@ -259,7 +259,7 @@ class Train():
             max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
             )
-        
+
         batch_size = pc.shape[0]
         all_voxels, all_indices = [], []
 
@@ -270,33 +270,46 @@ class Train():
             voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
-            # tensor_to_ply(voxels_torch[0].view(-1, 3), "voxels_torch.ply")
-            tensor_to_ply(indices_torch.view(-1, 3), "indices_torch.ply")
-
             ## sub-voxel feature
             indices_torch_trans = indices_torch[:, [2, 1, 0]] 
             voxel_centers = (indices_torch_trans.float() * torch.tensor([0.05, 0.05, 0.05]).to(self.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(self.device) + torch.tensor([0.025, 0.025, 0.025]).to(self.device)
             # tensor_to_ply(voxel_centers[0].view(-1, 3), "voxel_centers.ply")
-            
+            t_values = voxels_torch[:, :, 3] 
+            voxels_torch = voxels_torch[:, :, :3]
             relative_pose = torch.where(voxels_torch == 0, torch.tensor(0.0).to(voxels_torch.device), (voxels_torch - voxel_centers.unsqueeze(1)) / self.voxel_size)
-            # tensor_to_ply(relative_pose[0].view(-1, 3), "relative_pose[0].ply")
-            # tensor_to_ply(relative_pose.view(-1, 3), "relative_pose.ply")
+            relative_pose = torch.cat([relative_pose, t_values.unsqueeze(-1)], dim=2)
             
             valid = num_p_in_vx_tv.cpu().numpy() > 0
             indices_torch = indices_torch[valid]
             voxels_flatten = relative_pose.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)
-            ## not using abs -> only half of lidar remain 
+            ## not using abs -> only half of lidar remain     
+            
+            mask_0 = (t_values == 0).any(dim=1)
+            mask_1 = (t_values == 1).any(dim=1)
 
-            batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
-            indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
+            indices_0 = indices_torch[mask_0].to(self.device)
+            indices_1 = indices_torch[mask_1].to(self.device)
+            
+            t0 = torch.zeros((indices_0.shape[0], 1), dtype=torch.int32).to(self.device)
+            t1 = torch.ones((indices_1.shape[0], 1), dtype=torch.int32).to(self.device)
+            batch_indices_0 = torch.full((indices_0.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            batch_indices_1 = torch.full((indices_1.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            indices_combined_0 = torch.cat([batch_indices_0, indices_0, t0], dim=1)
+            indices_combined_1 = torch.cat([batch_indices_1, indices_1, t1], dim=1)
+            indices_combined = torch.cat([indices_combined_0, indices_combined_1], dim=0)  # [N_total, 4]
+            voxels_flatten = torch.cat([voxels_flatten[mask_0], voxels_flatten[mask_1]], dim=0)  
+            del indices_combined_0, indices_combined_1,batch_indices_0, batch_indices_1, t0, t1, indices_0, indices_1
+            # batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            # indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
+
+
             all_voxels.append(voxels_flatten)
             all_indices.append(indices_combined.int())
             
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
+        # print("all_indices", all_indices.shape)
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
-        print(sparse_tensor.dense().shape)
-
         return sparse_tensor
     
     def occupancy_grid_(self, pc):
@@ -326,15 +339,13 @@ class Train():
 
             batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
             indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
-
             all_voxels.append(occupancy)
             all_indices.append(indices_combined.int())
 
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
         
-        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
-        print(sparse_tensor.dense().shape)
+        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape[:3], self.batch_size)
         return sparse_tensor    
     
 
@@ -343,8 +354,6 @@ class Train():
         batch_size = pc.shape[0]
 
         # Initialize the occupancy grid with zeros
-        tensor_to_ply(pc[0], "pc.ply")
-
         occupancy_grid = torch.zeros((batch_size, *grid_size), dtype=torch.float32)
 
         for batch_idx in range(batch_size):
@@ -352,16 +361,11 @@ class Train():
             pc_single = pc[batch_idx]
             pc_single = pc_single[:, [2, 1, 0]]
 
-
             # Filtering point clouds (remove O.O.D points)
             filtered_pc = self.filter_point_cloud(pc_single, self.min_coord_range_zyx, self.max_coord_range_zyx)
-            if batch_idx==0:
-                tensor_to_ply(filtered_pc, "filtered_pc.ply")
 
             # Consider the minimum value as 0 index.
             voxel_indices = torch.div(filtered_pc - self.min_coord_range_zyx.to(filtered_pc.device) - 1e-4, voxel_size.to(filtered_pc.device)).long()
-            if batch_idx==0:
-                tensor_to_ply(voxel_indices , "voxel_indices.ply")
             voxel_indices[:, 0] = voxel_indices[:, 0].clamp(0, grid_size[0] - 1)
             voxel_indices[:, 1] = voxel_indices[:, 1].clamp(0, grid_size[1] - 1)
             voxel_indices[:, 2] = voxel_indices[:, 2].clamp(0, grid_size[2] - 1)
@@ -370,7 +374,7 @@ class Train():
 
         occupancy_grid = occupancy_grid.unsqueeze(-1).to(device)
         occupancy_grid = occupancy_grid.permute(0, 4, 1, 2, 3)
-        tensor_to_ply(occupancy_grid_to_coords(occupancy_grid), "occupancy.ply")
+        # tensor_to_ply(occupancy_grid_to_coords(occupancy_grid), "occupancy.ply")
 
         return occupancy_grid
 
@@ -467,6 +471,13 @@ class Train():
                 if len(prev_preds) > 0:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
                     prev_preds_tensor = torch.stack(prev_preds).to(self.device)
+                    ## 4D Convolution
+                    batch_size, n, _ = pts.shape
+                    zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+                    pts = torch.cat([pts, zeros], dim=2)
+                    batch_size, n, _ = prev_preds_tensor.shape
+                    ones = torch.ones((batch_size, n, 1), device=pts.device)
+                    prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
                     # tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
                     # self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
@@ -475,10 +486,16 @@ class Train():
                     del prev_preds, prev_preds_tensor
                     prev_preds = []
                 else:
-                    pts = pts.repeat_interleave(2, dim=0)
+                    # pts = pts.repeat_interleave(2, dim=0)
                     pts = pts.view(self.batch_size, -1, 3)
+                    ## 4D Convolution
+                    batch_size, n, _ = pts.shape
+                    zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+                    pts = torch.cat([pts, zeros], dim=2)
+                    
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
+                # tensor_to_ply(occupancy_grid_to_coords(sptensor.dense()[..., 0]), "sptensor.ply")
                 gt_occu = self.occupancy_grid_(gt_pts)
 
                 self.optimizer.zero_grad()
@@ -487,19 +504,15 @@ class Train():
                 ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()), iter, [1.0, 0.0, 0.0], "sptensor")
                 # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
-                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), iter, [1.0, 0.0, 0.0], "target")
-                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[1].squeeze(0)), iter, [1.0, 1.0, 0.0], "target2")
-                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), iter, [1.0, 1.0, 0.0], "target3")
-                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
-                tensor_to_ply(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), "occupancy.ply")
-                tensor_to_ply(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), "occupancy2.ply")
-
-                tensor_to_ply(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), "occupancy3.ply")
+                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), iter, [1.0, 0.0, 0.0], "target")
+                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[1].squeeze(0)), iter, [1.0, 1.0, 0.0], "target2")
+                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), iter, [1.0, 1.0, 0.0], "target3")
+                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
                 if iter == 490:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train")
-                    self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()), epoch, [0.0, 1.0, 1.0], "pts_train")
+                    self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), epoch, [0.0, 1.0, 1.0], "pts_train")
 
                 ## get_target
                 idx = 0
@@ -527,11 +540,11 @@ class Train():
                 # transform
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                     for i in range(min(self.batch_size, preds.size(0))):
-                        # if random.random() < self.teacher_forcing_ratio:
-                        #     input_data = gt_pts[i].cpu()
-                        # else:
-                        #     input_data = preds[i].cpu()
-                        transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                        if random.random() < self.teacher_forcing_ratio:
+                            input_data = gt_pts[i].cpu()
+                        else:
+                            input_data = preds[i].cpu()
+                        transformed_pred = self.transform_point_cloud(input_data, lidar_pos[i].cpu(), lidar_quat[i].cpu())
                         transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=3000)
                         prev_preds.append(transformed_pred)
                         del transformed_pred
@@ -579,31 +592,39 @@ class Train():
 
            
                     if len(self.val_taget_loader) != len(self.val_loader):
-                        print(f"calculate : not matcing {len(self.val_taget_loader)} and {len(self.val_loader)}")
+                        print(f"calculate : not matching {len(self.val_taget_loader)} & {len(self.val_loader)}")
                         output_directory = "valid_"
                         file_path = os.path.join(output_directory, f'{iter}.joblib')
                         occupancy_grids = []
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
                         occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                         os.makedirs(output_directory, exist_ok=True)
                         joblib.dump(occupancy_grids, file_path)
-                        
+
+
                     # concat
                     if len(prev_preds) > 0:
                         prev_preds = [torch.as_tensor(p) for p in prev_preds]
                         prev_preds_tensor = torch.stack(prev_preds).to(self.device)
+                        ## 4D Convolution
+                        batch_size, n, _ = pts.shape
+                        zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+                        pts = torch.cat([pts, zeros], dim=2)
+                        batch_size, n, _ = prev_preds_tensor.shape
+                        ones = torch.ones((batch_size, n, 1), device=pts.device)
+                        prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
                         pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                        # tensor_to_ply(prev_preds_tensor[0], f"transformed_pred_{iter}.ply")
-                        # self.tensorboard_launcher(prev_preds_tensor[0], iter, [1.0, 0.0, 0.0], "transformed_pts")
-                        # tensor_to_ply(pts[0], f"pts_{iter}.ply")
-                        # self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "gt_pts")
-                        del prev_preds_tensor, prev_preds
+                        del prev_preds, prev_preds_tensor
                         prev_preds = []
                     else:
-                        pts = pts.repeat_interleave(2, dim=0)
+                        # pts = pts.repeat_interleave(2, dim=0)
                         pts = pts.view(self.batch_size, -1, 3)
+                        ## 4D Convolution
+                        batch_size, n, _ = pts.shape
+                        zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+                        pts = torch.cat([pts, zeros], dim=2)
                     pts = torch.nan_to_num(pts, nan=0.0)
                     sptensor = self.preprocess(pts)
                     gt_occu = self.occupancy_grid_(gt_pts)
