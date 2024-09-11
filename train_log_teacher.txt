@@ -211,3 +211,4 @@ Epoch [309/600] - Train Loss: 0.6760, Validation Loss: 0.6771, Time: 259.7660s
 Epoch [301/600] - Train Loss: 0.6969, Validation Loss: 0.6943, Time: 370.7779s
 Epoch [302/600] - Train Loss: 0.6868, Validation Loss: 0.6949, Time: 259.1991s
 Epoch [301/600] - Train Loss: 0.6967, Validation Loss: 0.6949, Time: 284.1047s
+Epoch [301/600] - Train Loss: 0.6980, Validation Loss: 0.6718, Time: 396.8498s
