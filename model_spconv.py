@@ -46,34 +46,34 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Encoder2 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[0], enc_ch[1], kernel_size=3, stride=2, indice_key="spconv2"),
+            spconv.SparseConv3d(enc_ch[0], enc_ch[1], kernel_size=3, stride=2, padding=1,indice_key="spconv2"),
             nn.BatchNorm1d(enc_ch[1], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[1], enc_ch[1], kernel_size=3, stride=1, indice_key="subm2"),
+            spconv.SubMConv3d(enc_ch[1], enc_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm2"),
             nn.BatchNorm1d(enc_ch[1], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder3 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[1], enc_ch[2], kernel_size=3, stride=2, indice_key="spconv3"), 
+            spconv.SparseConv3d(enc_ch[1], enc_ch[2], kernel_size=3, stride=2, padding=1,indice_key="spconv3"), 
             nn.BatchNorm1d(enc_ch[2], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[2], enc_ch[2], kernel_size=3, stride=1, indice_key="subm3"),
+            spconv.SubMConv3d(enc_ch[2], enc_ch[2], kernel_size=3, stride=1, padding=1,indice_key="subm3"),
             nn.BatchNorm1d(enc_ch[2], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder4 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[2], enc_ch[3], kernel_size=3, stride=2, indice_key="spconv4"),
+            spconv.SparseConv3d(enc_ch[2], enc_ch[3], kernel_size=3, stride=2, padding=1,indice_key="spconv4"),
             nn.BatchNorm1d(enc_ch[3], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[3], enc_ch[3], kernel_size=3, stride=1, indice_key="subm4"),
+            spconv.SubMConv3d(enc_ch[3], enc_ch[3], kernel_size=3, stride=1, padding=1,indice_key="subm4"),
             nn.BatchNorm1d(enc_ch[3], momentum=0.1),
             nn.ReLU()
         )
         self.Encoder5 = spconv.SparseSequential(
-            spconv.SparseConv3d(enc_ch[3], enc_ch[4], kernel_size=3, stride=2, indice_key="spconv5"),
+            spconv.SparseConv3d(enc_ch[3], enc_ch[4], kernel_size=3, stride=2, padding=1,indice_key="spconv5"),
             nn.BatchNorm1d(enc_ch[4], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv3d(enc_ch[4], enc_ch[4], kernel_size=3, stride=1, indice_key="subm5"),
+            spconv.SubMConv3d(enc_ch[4], enc_ch[4], kernel_size=3, stride=1, padding=1,indice_key="subm5"),
             nn.BatchNorm1d(enc_ch[4], momentum=0.1),
             nn.ReLU()
         )
@@ -147,14 +147,14 @@ class PointCloud3DCNN(nn.Module):
         enc_4 = self.Encoder5(enc_3)
 
         dec_3 = self.Decoder5(enc_4)
-        feat_cls5 = self.cls5(dec_3) # 5 x 14 x 14
+        feat_cls5 = self.cls5(dec_3) # 7 x 15 x 15
         pred_prob = F.softmax(feat_cls5.features, 1)[:, 1]
         cm_, pred_prob = self.cls_postprocess(feat_cls5.indices, pred_prob)
         probs.append(pred_prob)
         cm.append(cm_)
 
         dec_3 = dec_3 + enc_3
-        dec_2 = self.Decoder4(dec_3) # 11 x 29 x 29
+        dec_2 = self.Decoder4(dec_3) # 13 x 30 x 30
         feat_cls4 = self.cls4(dec_2)
         pred_prob = F.softmax(feat_cls4.features, 1)[:, 1]
         cm_, pred_prob = self.cls_postprocess(feat_cls4.indices, pred_prob)
@@ -162,7 +162,7 @@ class PointCloud3DCNN(nn.Module):
         cm.append(cm_)
         
         dec_2 = dec_2 + enc_2
-        dec_1 = self.Decoder3(dec_2) # 24 x 59 x 59
+        dec_1 = self.Decoder3(dec_2) # 25 x 60 x 60
         feat_cls3 = self.cls3(dec_1)
         pred_prob = F.softmax(feat_cls3.features, 1)[:, 1]
         cm_, pred_prob = self.cls_postprocess(feat_cls3.indices, pred_prob)

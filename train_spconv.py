@@ -132,7 +132,7 @@ class Train():
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
         self.weight_folder = "weight_teacher"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_teacher.txt'
-        self.input_shape = (50, 120, 120)
+        
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
         self.max_coord_range_zyx = torch.tensor([1.5, 3.0, 3.0])
@@ -140,6 +140,9 @@ class Train():
         self.train_occu = []
         self.valid_occu = []
         self.voxel_size = torch.tensor([0.05, 0.05, 0.05]).to(self.device)
+        self.vsize_xyz=[0.05, 0.05, 0.05]
+        self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
+        self.input_shape = (50, 120, 120)
         
         self.train_target_dir = "train_"
         self.train_get_target = GetTarget(self.train_target_dir)
@@ -250,8 +253,8 @@ class Train():
 
         # Voxel generator
         gen = Point2VoxelGPU3d(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            vsize_xyz=self.vsize_xyz,
+            coors_range_xyz=self.coors_range_xyz,
             num_point_features=self.model.num_point_features,
             max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
@@ -292,6 +295,7 @@ class Train():
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
+        print(sparse_tensor.dense().shape)
 
         return sparse_tensor
     
@@ -300,8 +304,8 @@ class Train():
         from spconv.pytorch.utils import PointToVoxel
         # Voxel generator
         gen = Point2VoxelGPU3d(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            vsize_xyz=self.vsize_xyz,
+            coors_range_xyz=self.coors_range_xyz,
             num_point_features=self.model.num_point_features,
             max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
@@ -330,7 +334,7 @@ class Train():
         all_indices = torch.cat(all_indices, dim=0)
         
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
-        
+        print(sparse_tensor.dense().shape)
         return sparse_tensor    
     
 
@@ -451,9 +455,9 @@ class Train():
                     output_directory = "train_"
                     file_path = os.path.join(output_directory, f'{iter}.joblib')
                     occupancy_grids = []
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
                     occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                     os.makedirs(output_directory, exist_ok=True)
                     joblib.dump(occupancy_grids, file_path)
