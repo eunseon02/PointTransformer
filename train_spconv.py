@@ -41,19 +41,15 @@ from data import GetTarget
 import random
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check_teacher"))
-def pad_or_trim_cloud(cloud, target_size=3000):
-    n = cloud.size(0)  # 현재 포인트 클라우드의 개수 (n x 3에서 n)
-    
+writer = SummaryWriter(join(BASE_LOGDIR, "check_"))
+def pad_or_trim_cloud(pc, target_size=3000):
+    n = pc.size(0)
     if n < target_size:
-        # n이 target_size보다 작으면 패딩 (0으로 채움)
-        padding = torch.zeros((target_size - n, 3))  # (target_size - n)개의 0으로 채워진 3D 좌표 생성
-        cloud = torch.cat([cloud, padding], dim=0)  # 원본 포인트 클라우드에 패딩 추가
+        padding = torch.zeros((target_size - n, 3))
+        pc = torch.cat([pc, padding], dim=0) 
     elif n > target_size:
-        # n이 target_size보다 크면 자름
-        cloud = cloud[:target_size, :]  # 첫 target_size개의 포인트만 사용
-
-    return cloud
+        pc = pc[:target_size, :]  
+    return pc
 def occupancy_grid_to_coords(occupancy_grid):
     _, _, H, W, D = occupancy_grid.shape
     occupancy_grid = occupancy_grid[0, 0]
@@ -103,7 +99,7 @@ def profileit(func):
 
 class Train():
     def __init__(self, args):
-        self.epochs = 300
+        self.epochs = 600
         self.snapshot_interval = 10
         self.batch_size = 32
         self.split = 1
@@ -136,16 +132,17 @@ class Train():
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
         self.weight_folder = "weight_teacher"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_teacher.txt'
-        self.input_shape = (50, 120, 120)
         
-        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -1.0])
-        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 1.5])
-        self.min_coord_range_xyz = torch.tensor([-3.0, -3.0, -1.0])
-        self.max_coord_range_xyz = torch.tensor([3.0, 3.0, 1.5])
+        
+        self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
+        self.max_coord_range_zyx = torch.tensor([1.5, 3.0, 3.0])
         
         self.train_occu = []
         self.valid_occu = []
         self.voxel_size = torch.tensor([0.05, 0.05, 0.05]).to(self.device)
+        self.vsize_xyz=[0.05, 0.05, 0.05]
+        self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
+        self.input_shape = (50, 120, 120)
         
         self.train_target_dir = "train_"
         self.train_get_target = GetTarget(self.train_target_dir)
@@ -155,7 +152,7 @@ class Train():
         self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
         self.teacher_forcing_ratio = 1.0
-        self.decay_rate = 0.01
+        self.decay_rate = 0.001
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
@@ -188,7 +185,7 @@ class Train():
 
         self.model.train()
 
-        start_epoch = 150
+        start_epoch = 300
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
@@ -256,8 +253,8 @@ class Train():
 
         # Voxel generator
         gen = Point2VoxelGPU3d(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            vsize_xyz=self.vsize_xyz,
+            coors_range_xyz=self.coors_range_xyz,
             num_point_features=self.model.num_point_features,
             max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
@@ -268,7 +265,7 @@ class Train():
 
         for batch_idx in range(batch_size):
             pc_single = pc[batch_idx]
-            pc_single = tv.from_numpy(pc_single.cpu().numpy())
+            pc_single = tv.from_numpy(pc_single.detach().cpu().numpy())
 
             voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
@@ -298,6 +295,7 @@ class Train():
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
+        print(sparse_tensor.dense().shape)
 
         return sparse_tensor
     
@@ -306,8 +304,8 @@ class Train():
         from spconv.pytorch.utils import PointToVoxel
         # Voxel generator
         gen = Point2VoxelGPU3d(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            vsize_xyz=self.vsize_xyz,
+            coors_range_xyz=self.coors_range_xyz,
             num_point_features=self.model.num_point_features,
             max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
@@ -336,7 +334,7 @@ class Train():
         all_indices = torch.cat(all_indices, dim=0)
         
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
-        
+        print(sparse_tensor.dense().shape)
         return sparse_tensor    
     
 
@@ -356,37 +354,42 @@ class Train():
 
 
             # Filtering point clouds (remove O.O.D points)
-            filtered_pc = self.filter_point_cloud(pc_single, self.min_coord_range_xyz, self.max_coord_range_xyz)
+            filtered_pc = self.filter_point_cloud(pc_single, self.min_coord_range_zyx, self.max_coord_range_zyx)
+            if batch_idx==0:
+                tensor_to_ply(filtered_pc, "filtered_pc.ply")
 
             # Consider the minimum value as 0 index.
-            voxel_indices = torch.div(filtered_pc - self.min_coord_range_xyz.to(filtered_pc.device) - 1e-4, voxel_size.to(filtered_pc.device)).long()
-
+            voxel_indices = torch.div(filtered_pc - self.min_coord_range_zyx.to(filtered_pc.device) - 1e-4, voxel_size.to(filtered_pc.device)).long()
+            if batch_idx==0:
+                tensor_to_ply(voxel_indices , "voxel_indices.ply")
+            voxel_indices[:, 0] = voxel_indices[:, 0].clamp(0, grid_size[0] - 1)
+            voxel_indices[:, 1] = voxel_indices[:, 1].clamp(0, grid_size[1] - 1)
+            voxel_indices[:, 2] = voxel_indices[:, 2].clamp(0, grid_size[2] - 1)
             # Increment the occupancy grid at the corresponding indices
             occupancy_grid[batch_idx, voxel_indices[:, 0], voxel_indices[:, 1], voxel_indices[:, 2]] = 1.0
 
         occupancy_grid = occupancy_grid.unsqueeze(-1).to(device)
         occupancy_grid = occupancy_grid.permute(0, 4, 1, 2, 3)
-        # print("occupancy_grid", occupancy_grid.shape)
-        # save_single_occupancy_grid_as_ply(occupancy_grid, 'occupancy_grid.ply')
+        tensor_to_ply(occupancy_grid_to_coords(occupancy_grid), "occupancy.ply")
 
         return occupancy_grid
 
-    def filter_point_cloud(self, pc, min_coord_range_xyz, max_coord_range_xyz):
+    def filter_point_cloud(self, pc, min_coord_range_zyx, max_coord_range_zyx):
         """
         Filter out points from the point cloud that are outside the specified coordinate range.
 
         Args:
             pc (torch.Tensor): Point cloud data of shape (N, 3).
-            min_coord_range_xyz (torch.Tensor): Minimum coordinate values for x, y, z.
-            max_coord_range_xyz (torch.Tensor): Maximum coordinate values for x, y, z.
+            min_coord_range_zyx (torch.Tensor): Minimum coordinate values for x, y, z.
+            max_coord_range_zyx (torch.Tensor): Maximum coordinate values for x, y, z.
 
         Returns:
             torch.Tensor: Filtered point cloud with points within the specified range.
         """
         # Create masks for each coordinate
-        mask_x = (pc[..., 0] >= min_coord_range_xyz[0]) & (pc[..., 0] <= max_coord_range_xyz[0])
-        mask_y = (pc[..., 1] >= min_coord_range_xyz[1]) & (pc[..., 1] <= max_coord_range_xyz[1])
-        mask_z = (pc[..., 2] >= min_coord_range_xyz[2]) & (pc[..., 2] <= max_coord_range_xyz[2])
+        mask_x = (pc[..., 0] >= min_coord_range_zyx[0]) & (pc[..., 0] <= max_coord_range_zyx[0])
+        mask_y = (pc[..., 1] >= min_coord_range_zyx[1]) & (pc[..., 1] <= max_coord_range_zyx[1])
+        mask_z = (pc[..., 2] >= min_coord_range_zyx[2]) & (pc[..., 2] <= max_coord_range_zyx[2])
 
         # filter redundant points which allocated in the (0,0,0) coordinate
         mask_center = torch.logical_not((pc[:] == torch.Tensor([0, 0, 0]).to(pc.device)).all(dim=1))
@@ -452,13 +455,14 @@ class Train():
                     output_directory = "train_"
                     file_path = os.path.join(output_directory, f'{iter}.joblib')
                     occupancy_grids = []
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                     os.makedirs(output_directory, exist_ok=True)
                     joblib.dump(occupancy_grids, file_path)
-                    
+
+
                 # concat
                 if len(prev_preds) > 0:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
@@ -480,8 +484,17 @@ class Train():
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
 
+                ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()), iter, [1.0, 0.0, 0.0], "sptensor")
                 # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), iter, [1.0, 0.0, 0.0], "target")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[1].squeeze(0)), iter, [1.0, 1.0, 0.0], "target2")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), iter, [1.0, 1.0, 0.0], "target3")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
+                tensor_to_ply(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), "occupancy.ply")
+                tensor_to_ply(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), "occupancy2.ply")
+
+                tensor_to_ply(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), "occupancy3.ply")
                 if iter == 490:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
@@ -513,12 +526,12 @@ class Train():
                 
                 # transform
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
-                    for i in range(min(self.batch_size, gt_pts.size(0))):
+                    for i in range(min(self.batch_size, preds.size(0))):
                         # if random.random() < self.teacher_forcing_ratio:
                         #     input_data = gt_pts[i].cpu()
                         # else:
                         #     input_data = preds[i].cpu()
-                        transformed_pred = self.transform_point_cloud(gt_pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                        transformed_pred = self.transform_point_cloud(preds[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
                         transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=3000)
                         prev_preds.append(transformed_pred)
                         del transformed_pred
@@ -570,10 +583,10 @@ class Train():
                         output_directory = "valid_"
                         file_path = os.path.join(output_directory, f'{iter}.joblib')
                         occupancy_grids = []
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([24, 59, 59], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_xyz - self.min_coord_range_xyz) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (5, 14, 14), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (11, 29, 29), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (24, 59, 59), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                        occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
                         os.makedirs(output_directory, exist_ok=True)
                         joblib.dump(occupancy_grids, file_path)
                         
