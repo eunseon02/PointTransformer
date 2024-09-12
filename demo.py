@@ -37,6 +37,7 @@ import open3d as o3d
 from open3d.visualization.tensorboard_plugin import summary
 from open3d.visualization.tensorboard_plugin.util import to_dict_batch
 from torch.multiprocessing import Process
+from torch.utils.tensorboard import SummaryWriter
 
 BASE_LOGDIR = "./logs" 
 writer = SummaryWriter(join(BASE_LOGDIR, "visualize"))
@@ -93,8 +94,8 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 32
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.batch_size = 16
+        self.device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
         self.model_path = args.model_path
@@ -111,6 +112,12 @@ class Train():
         self.parameter = self.model.parameters()
         self.input_shape = (50, 120, 120)
         
+        self.voxel_size = torch.tensor([0.05, 0.05, 0.05]).to(self.device)
+        self.vsize_xyz=[0.05, 0.05, 0.05]
+        self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
+        self.input_shape = (50, 120, 120, 2)
+
+        
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
         
@@ -118,7 +125,7 @@ class Train():
     def run(self):
         print('start!!')
 
-        self.model.eval()
+        self.model.train()
         prev_preds_val = None
 
         # start_epoch = 0
@@ -161,55 +168,81 @@ class Train():
         transformed_pc = transformed_pc_homo[:, :3]
         del point_cloud, ones, pc_homo, transformation_matrix_torch, transformed_pc_homo
         return transformed_pc
+
     def preprocess(self, pc):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
 
         # Voxel generator
         gen = Point2VoxelGPU3d(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            vsize_xyz=self.vsize_xyz,
+            coors_range_xyz=self.coors_range_xyz,
             num_point_features=self.model.num_point_features,
-            max_num_voxels=600000,
+            max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
             )
-        
+
         batch_size = pc.shape[0]
         all_voxels, all_indices = [], []
 
         for batch_idx in range(batch_size):
             pc_single = pc[batch_idx]
-            pc_single = tv.from_numpy(pc_single.cpu().numpy())
-            voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
+            pc_single = tv.from_numpy(pc_single.detach().cpu().numpy())
 
+            voxels_tv, indices_tv, num_p_in_vx_tv = gen.point_to_voxel_hash(pc_single.cuda())
             voxels_torch = torch.tensor(voxels_tv.cpu().numpy(), dtype=torch.float32).to(self.device)
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
-            mean = voxels_torch.mean(dim=1, keepdim=True)  # (batch, 1, 3)
-            voxels_torch = voxels_torch - mean
+            ## sub-voxel feature
+            indices_torch_trans = indices_torch[:, [2, 1, 0]] 
+            voxel_centers = (indices_torch_trans.float() * torch.tensor([0.05, 0.05, 0.05]).to(self.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(self.device) + torch.tensor([0.025, 0.025, 0.025]).to(self.device)
+            # tensor_to_ply(voxel_centers[0].view(-1, 3), "voxel_centers.ply")
+            t_values = voxels_torch[:, :, 3] 
+            voxels_torch = voxels_torch[:, :, :3]
+            relative_pose = torch.where(voxels_torch == 0, torch.tensor(0.0).to(voxels_torch.device), (voxels_torch - voxel_centers.unsqueeze(1)) / self.voxel_size)
+            relative_pose = torch.cat([relative_pose, t_values.unsqueeze(-1)], dim=2)
+            
             valid = num_p_in_vx_tv.cpu().numpy() > 0
-            voxels_flatten = voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)[valid]
             indices_torch = indices_torch[valid]
-            voxels_flatten = torch.abs(voxels_torch.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel))
+            voxels_flatten = relative_pose.view(-1, self.model.num_point_features * self.model.max_num_points_per_voxel)
+            ## not using abs -> only half of lidar remain     
+            
+            mask_0 = (t_values == 0).any(dim=1)
+            mask_1 = (t_values == 1).any(dim=1)
 
-            batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
-            indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
+            indices_0 = indices_torch[mask_0].to(self.device)
+            indices_1 = indices_torch[mask_1].to(self.device)
+            
+            t0 = torch.zeros((indices_0.shape[0], 1), dtype=torch.int32).to(self.device)
+            t1 = torch.ones((indices_1.shape[0], 1), dtype=torch.int32).to(self.device)
+            batch_indices_0 = torch.full((indices_0.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            batch_indices_1 = torch.full((indices_1.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            indices_combined_0 = torch.cat([batch_indices_0, indices_0, t0], dim=1)
+            indices_combined_1 = torch.cat([batch_indices_1, indices_1, t1], dim=1)
+            indices_combined = torch.cat([indices_combined_0, indices_combined_1], dim=0)  # [N_total, 4]
+            voxels_flatten = torch.cat([voxels_flatten[mask_0], voxels_flatten[mask_1]], dim=0)  
+            del indices_combined_0, indices_combined_1,batch_indices_0, batch_indices_1, t0, t1, indices_0, indices_1
+            # batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
+            # indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
+
+
             all_voxels.append(voxels_flatten)
             all_indices.append(indices_combined.int())
-
+            
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
+        # print("all_indices", all_indices.shape)
         sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
-
         return sparse_tensor
+    
     def occupancy_grid_(self, pc):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
         # Voxel generator
         gen = Point2VoxelGPU3d(
-            vsize_xyz=[0.05, 0.05, 0.05],
-            coors_range_xyz=[-3, -3, -1, 3, 3, 1.5],
+            vsize_xyz=self.vsize_xyz,
+            coors_range_xyz=self.coors_range_xyz,
             num_point_features=self.model.num_point_features,
-            max_num_voxels=600000,
+            max_num_voxels=800000,
             max_num_points_per_voxel=self.model.max_num_points_per_voxel
         )
         
@@ -228,17 +261,14 @@ class Train():
 
             batch_indices = torch.full((indices_torch.shape[0], 1), batch_idx, dtype=torch.int32).to(self.device)
             indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
-
             all_voxels.append(occupancy)
             all_indices.append(indices_combined.int())
 
         all_voxels = torch.cat(all_voxels, dim=0)
         all_indices = torch.cat(all_indices, dim=0)
         
-        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
-        
-        return sparse_tensor    
-
+        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape[:3], self.batch_size)
+        return sparse_tensor 
     def demo(self, epoch, prev_preds):
         epoch_start_time = time.time()
         loss_buf = []
@@ -335,7 +365,7 @@ class Train():
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')
-    parser.add_argument('--model_path', type=str, default='model_epoch_best_149.pth', metavar='N',
+    parser.add_argument('--model_path', type=str, default='weight2/model_epoch_best_39.pth', metavar='N',
                         help='Path to load model')
     args = parser.parse_args()
     return args

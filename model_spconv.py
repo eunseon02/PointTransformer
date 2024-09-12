@@ -10,9 +10,11 @@ import open3d as o3d
 from config import config as cfg
 import cumm
 import torch.nn.functional as F
+from os.path import join
+
 
 input_shape = (cfg.D, cfg.H, cfg.W)
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
@@ -24,13 +26,28 @@ def tensor_to_ply(tensor, filename):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
-# def numpy_to_open3d_point_cloud(points):
-#     pcd = o3d.geometry.PointCloud()
-#     pcd.points = o3d.utility.Vector3dVector(points)
-#     o3d.visualization.draw_geometries([pcd])
+
+
+
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
+    
+    def tensorboard_launcher(self, points, step, color, tag):
+        # points = occupancy_grid_to_coords(points)
+        num_points = points.shape[0]
+        colors = torch.tensor(color).repeat(num_points, 1)
+        if num_points == 0:
+            print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
+            # return
+        else:
+            writer.add_3d(
+            tag,
+            {
+                "vertex_positions": points.float(), # (N, 3)
+                "vertex_colors": colors.float()  # (N, 3)
+            },
+            step)
     
     def __init__(self, batch_size):
         super(PointCloud3DCNN, self).__init__()
@@ -41,7 +58,7 @@ class PointCloud3DCNN(nn.Module):
         self.num_point_features = 4
         self.max_num_points_per_voxel = 3
         self.Encoder1 = spconv.SparseSequential(
-            spconv.SubMConv4d(self.num_point_features*self.max_num_points_per_voxel, enc_ch[0], kernel_size=3, stride=1, indice_key="subm1"),
+            spconv.SubMConv4d(3*self.max_num_points_per_voxel, enc_ch[0], kernel_size=3, stride=1, indice_key="subm1"),
             nn.BatchNorm1d(enc_ch[0], momentum=0.1),
             nn.ReLU()
         )
@@ -120,8 +137,8 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Decoder1 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[0], self.num_point_features*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
-            nn.BatchNorm1d(self.num_point_features*self.max_num_points_per_voxel, momentum=0.1),
+            spconv.SubMConv4d(dec_ch[0], 3*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
+            nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
             nn.ReLU()
         )
         self.cls2 = spconv.SparseSequential(
@@ -171,25 +188,26 @@ class PointCloud3DCNN(nn.Module):
         cm_, pred_prob = self.cls_postprocess(feat_cls2.indices, pred_prob)
         probs.append(pred_prob)
         cm.append(cm_)
-        # print(dec_0.indices.shape)
-        batch_size, channels, depth, height, width, time = dec_0.dense().shape
-        x = dec_0.dense().permute(0, 2, 3, 4, 1, 5).contiguous()
-        x = x.view(-1, channels, time)
-        x = self.conv1d(x)
-        x = x.view(batch_size, depth, height, width, channels)
-        f_occu = x.permute(0, 4, 1, 2, 3)
-        
+
+        dec_0_dense = dec_0.dense()
+        batch_size, channels, depth, height, width, time = dec_0_dense.shape
+        f_occu = dec_0_dense.permute(0, 2, 3, 4, 1, 5).contiguous()
+        f_occu = f_occu.view(-1, channels, time)
+        f_occu = self.conv1d(f_occu)
+        f_occu = f_occu.view(batch_size, depth, height, width, channels)
+        f_occu = f_occu.permute(0, 4, 1, 2, 3)
         occu = self.conv(f_occu)
-        occu = torch.sigmoid(occu)
+        # print(occu)
+        # occu = torch.tanh(occu) # batch, 1, D, W, H
 
         feat = self.Decoder1(dec_0)
-        feat = self.feat_postprocess(feat)
+        feat = self.feat_postprocess(feat) # batch, n, 12
         if feat.requires_grad:
             feat.retain_grad()
-        
-        coords = self.indices_postprocess(dec_0)
-        # print("coords", coords.shape)
+        feat = torch.sigmoid(feat)
+        coords = self.indices_postprocess(dec_0) # batch, n, 4
         preds = self.postprocess(feat, coords)
+        # print(preds.grad_fn)
         
         preds = preds.view(self.batch_size, -1, 3)
             
@@ -206,7 +224,6 @@ class PointCloud3DCNN(nn.Module):
             batch_mask = (batch_indices == b)
             cm_batch.append(feat_indices[batch_mask, 1:])
             pred_prob_batch.append(pred_prob[batch_mask].unsqueeze(-1))
-
         max_points = max([t.size(0) for t in cm_batch])
         cm_batch_padded = []
         pred_prob_batch_padded = []
@@ -238,13 +255,10 @@ class PointCloud3DCNN(nn.Module):
         for batch_idx in range(batch_size):
             batch_mask = (preds.indices[:, 0] == batch_idx)
             batch_coords = preds.features[batch_mask]            
-            if batch_coords.shape[0] > max_num_points:
-                print("output : ", batch_coords.shape[0])
-                batch_coords = batch_coords[:max_num_points]
             
             padding_size = max_num_points - batch_coords.shape[0]
             if padding_size > 0:
-                padding = torch.zeros((padding_size, self.max_num_points_per_voxel*self.num_point_features), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
+                padding = torch.zeros((padding_size, 3*self.max_num_points_per_voxel), dtype=batch_coords.dtype, device=batch_coords.device, requires_grad=True)
                 padded_batch_coords = torch.cat([batch_coords, padding], dim=0)
 
             else:
@@ -260,11 +274,11 @@ class PointCloud3DCNN(nn.Module):
         for batch_idx in range(batch_size):
             coords_batch = coords[batch_idx]
             feat_batch = feat[batch_idx]
-            feat_batch = feat_batch.view(-1, self.max_num_points_per_voxel, self.num_point_features)
+            feat_batch = feat_batch.view(-1, self.max_num_points_per_voxel, 3)
             feat_batch = feat_batch[:, :, :3] ## remove t dim
             coords_batch = coords_batch[:, [2, 1, 0]]
-            voxel_centers = (coords_batch * torch.tensor([0.05, 0.05, 0.05])) + torch.tensor([-3.0, -3.0, -1.0]) + torch.tensor([0.025, 0.025, 0.025])
-            pred = torch.where(feat_batch == 0, torch.zeros_like(feat_batch), (voxel_centers.unsqueeze(1).to(self.device) + feat_batch) / torch.tensor([0.05, 0.05, 0.05]).to(self.device))
+            voxel_centers = (coords_batch.float() * torch.tensor([0.05, 0.05, 0.05])) + torch.tensor([-3.0, -3.0, -1.0])
+            pred = torch.where(feat_batch == 0, torch.zeros_like(feat_batch), (voxel_centers.unsqueeze(1).to(self.device) + feat_batch*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
             preds = pred.view(-1, 3 * self.max_num_points_per_voxel)
             all_preds.append(preds)
         all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 

@@ -96,7 +96,7 @@ class Train():
         self.snapshot_interval = 10
         self.batch_size = 2
         self.split = 1
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size).to(self.device)
         self.model_path = args.model_path

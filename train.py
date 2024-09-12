@@ -70,7 +70,7 @@ class Train():
         self.epochs = 300
         self.snapshot_interval = 10
         self.batch_size = 32
-        # self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        # self.device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
         self.model = PointTransformerV3ForGlobalFeature(self.batch_size).cuda(rank)
         self.model_path = args.model_path
         if self.model_path != '':

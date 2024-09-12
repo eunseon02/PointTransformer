@@ -4,7 +4,7 @@ from model import PointTransformerV3, Point  # Adjust the import path if necessa
 import torch.nn.functional as F
 from loss import NSLoss
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 
 class PointTransformerV3ForGlobalFeature(PointTransformerV3):

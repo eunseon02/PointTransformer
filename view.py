@@ -1,7 +1,7 @@
 import open3d as o3d
 
 # PLY 파일 경로 설정
-ply_file_path = "voxels_torch.ply"
+ply_file_path = "preds.ply"
 
 # PLY 파일 읽기
 pcd = o3d.io.read_point_cloud(ply_file_path)

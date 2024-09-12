@@ -10,11 +10,11 @@ from torch.nn.utils.rnn import pad_sequence
 import pickle
 import joblib
 import h5py
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 
 class PointCloudDataset(Dataset):
-    def __init__(self, filename, split='train'):
+    def __init__(self, filename, batch, split='train'):
         self.point_cnt = 2048
         self.split = split
         self.filename = filename
@@ -23,7 +23,7 @@ class PointCloudDataset(Dataset):
         
         self.batches = []
         self.total_len = 0
-        batch_size = 5
+        batch_size = batch
 
         if self.split not in self.h5_file:
             raise KeyError(f"The split '{self.split}' does not exist in the HDF5 file.")
@@ -40,6 +40,9 @@ class PointCloudDataset(Dataset):
                 
             if batch_size is not None and self.batch_count >= batch_size:
                 break
+            
+        if batch > self.batch_count:
+            raise IndexError(f'Total env {self.batch_count}')
                 
 
         
