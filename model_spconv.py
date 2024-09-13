@@ -200,8 +200,8 @@ class PointCloud3DCNN(nn.Module):
         # print(occu)
         # occu = torch.tanh(occu) # batch, 1, D, W, H
 
-        feat = self.Decoder1(dec_0)
-        feat = self.feat_postprocess(feat) # batch, n, 12
+        dec_0 = self.Decoder1(dec_0)
+        feat = self.feat_postprocess(dec_0) # batch, n, 12
         if feat.requires_grad:
             feat.retain_grad()
         feat = torch.sigmoid(feat)

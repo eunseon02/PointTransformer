@@ -41,7 +41,10 @@ from data2 import GetTarget
 import random
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check_2"))
+writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
+writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
+writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
+
 def pad_or_trim_cloud(pc, target_size=3000):
     n = pc.size(0)
     if n < target_size:
@@ -121,7 +124,7 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight_2"
+        self.weight_folder = "weight"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
         
         
@@ -145,7 +148,7 @@ class Train():
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
-    def tensorboard_launcher(self, points, step, color, tag):
+    def tensorboard_launcher(self, points, step, color, tag, writer):
         # points = occupancy_grid_to_coords(points)
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
@@ -177,12 +180,12 @@ class Train():
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
-            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer2.add_scalar("Loss/train", train_loss, epoch)
             # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
             # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
             # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
             val_loss = self.validation_epoch(epoch)
-            writer.add_scalar("Loss/valid", val_loss, epoch)
+            writer2.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
                 print("Regenerate train loader")
@@ -501,15 +504,25 @@ class Train():
                 # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
                 if iter == 40:
                     print("tensorboard_launcher")
-                    self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train")
-                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train")
-                    self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), epoch, [0.0, 1.0, 1.0], "pts_train")
+                    self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
+                    self.tensorboard_launcher(preds[0].float(), epoch, [1.0, 0.0, 0.0], "preds", writer2)
+                    self.tensorboard_launcher(gt_pts[0].float(), epoch, [0.0, 0.0, 1.0], "gt_pts", writer2)
 
                 ## get_target
                 idx = 0
                 gt_probs = []
                 for idx in range(len(probs)):
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
+                    if idx ==2 and iter == 40:
+                        mask = gt_prob[0] == 1
+                        occu_= cm[idx][0,mask, :3]
+                        self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm", writer3)
+                        mask = probs[idx][0].squeeze(-1) == 1                    
+                        occu_= cm[idx][0,mask, :3]
+                        self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
+
                     gt_probs.append(gt_prob)
                 del gt_prob
                 loss, cham_loss, occu_loss, cls_losses = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)
@@ -625,8 +638,9 @@ class Train():
 
                     if iter == 120:
                         print("tensorboard_launcher")
-                        self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid")
-                        self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid")
+                        self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid", writer)
+                        self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid", writer)
+                        
                     #     self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()), epoch, [0.0, 1.0, 1.0], "pts_valid")
 
 
@@ -658,7 +672,7 @@ class Train():
             epoch_time = time.time() - epoch_start_time
             self.val_hist['per_epoch_time'].append(epoch_time)
             self.val_hist['val_loss'].append(np.mean(loss_buf))
-            val_loss = np.mean(loss_buf) if loss_buf else 0
+            val_loss = np.nanmean(loss_buf) if loss_buf else 0
             return val_loss
 
 
