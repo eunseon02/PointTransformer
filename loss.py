@@ -178,7 +178,6 @@ class NSLoss(nn.Module):
             cls_loss = self.cls_loss(probs[idx].squeeze(-1), gt_probs[idx].to(preds.device))
             cls_losses = cls_losses + cls_loss
         cls_losses = cls_losses/ len(probs)
-
         total_loss = 0.1*cham_loss + 0.3*occu_loss + cls_losses
         return total_loss, cham_loss, occu_loss, cls_losses
     

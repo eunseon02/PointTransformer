@@ -104,7 +104,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU(),
         )
         self.cls5 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[3], 3, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
+            spconv.SubMConv4d(dec_ch[3], 2, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
         )
         self.Decoder4 = spconv.SparseSequential(
             spconv.SparseInverseConv4d(dec_ch[3], dec_ch[2], kernel_size=3, indice_key="spconv4"),
@@ -115,7 +115,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.cls4 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[2], 3, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
+            spconv.SubMConv4d(dec_ch[2], 2, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
         )
         self.Decoder3 = spconv.SparseSequential(
             spconv.SparseInverseConv4d(dec_ch[2], dec_ch[1], kernel_size=3, indice_key="spconv3"),
@@ -126,7 +126,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.cls3 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[1], 3, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
+            spconv.SubMConv4d(dec_ch[1], 2, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
         )
         self.Decoder2 = spconv.SparseSequential(
             spconv.SparseInverseConv4d(dec_ch[1], dec_ch[0], kernel_size=3, indice_key="spconv2"),
@@ -142,7 +142,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.cls2 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[0], 3, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
+            spconv.SubMConv4d(dec_ch[0], 2, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
         self.conv1d = nn.Conv1d(in_channels=dec_ch[0], out_channels=dec_ch[0], kernel_size=2, stride=1)
         self.conv = nn.Conv3d(16, 1, kernel_size=3, padding=1)

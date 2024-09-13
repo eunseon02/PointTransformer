@@ -41,7 +41,7 @@ from data2 import GetTarget
 import random
 
 BASE_LOGDIR = "./train_logs" 
-writer = SummaryWriter(join(BASE_LOGDIR, "check_"))
+writer = SummaryWriter(join(BASE_LOGDIR, "check_2"))
 def pad_or_trim_cloud(pc, target_size=3000):
     n = pc.size(0)
     if n < target_size:
@@ -121,8 +121,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight_teacher"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log_teacher.txt'
+        self.weight_folder = "weight_2"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
@@ -417,7 +417,7 @@ class Train():
         occupancy_values = occupancy_grid[batch_indices, 0, x_indices, y_indices, z_indices]
         return occupancy_values
                 
-    @profileit
+    # @profileit
     def train_epoch(self, epoch):
         epoch_start_time = time.time()
         loss_buf = []
@@ -490,7 +490,7 @@ class Train():
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
-                # self.tensorboard_launcher(preds[0].float(), iter, [1.0, 0.0, 1.0], "occu")
+                # self.tensorboard_launcher(preds[0].float(), iter, [1.0, 0.0, 1.0], "preds")
     
                 ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
@@ -525,7 +525,7 @@ class Train():
                 #     else:
                 #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
-                loss_buf.append(cls_losses.item())
+                loss_buf.append(loss.item())
                 
                 # transform
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
@@ -579,8 +579,6 @@ class Train():
                     gt_pts = gt_pts.to(self.device)
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
-
-
            
                     if len(self.val_taget_loader) != len(self.val_loader):
                         print(f"calculate : not matching {len(self.val_taget_loader)} & {len(self.val_loader)}")
@@ -642,7 +640,7 @@ class Train():
 
                     
                     loss, cham_loss, occu_loss, cls_losses = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)                    
-                    loss_buf.append(cls_losses.item())
+                    loss_buf.append(loss.item())
                     
                     # transform
                     if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
