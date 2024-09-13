@@ -144,7 +144,7 @@ class Train():
         self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
         self.teacher_forcing_ratio = 1.0
-        self.decay_rate = 0.001
+        self.decay_rate = 0.01
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
@@ -543,16 +543,16 @@ class Train():
                 # transform
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                     for i in range(min(self.batch_size, preds.size(0))):
-                        # if random.random() < self.teacher_forcing_ratio:
-                        #     input_data = gt_pts[i].cpu()
-                        # else:
-                        #     input_data = preds[i].cpu()
-                        transformed_pred = self.transform_point_cloud(gt_pts[i].cpu(), lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                        if random.random() < self.teacher_forcing_ratio:
+                            input_data = gt_pts[i].cpu()
+                        else:
+                            input_data = preds[i].cpu()
+                        transformed_pred = self.transform_point_cloud(input_data, lidar_pos[i].cpu(), lidar_quat[i].cpu())
                         transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=3000)
                         prev_preds.append(transformed_pred)
                         del transformed_pred
-                    
-                self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
+                if epoch % 20 == 0:
+                    self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
                 # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, cham_loss, occu_loss, cls_losses, occu, probs, cm, sptensor, gt_occu,occupancy_grids
