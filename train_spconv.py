@@ -40,7 +40,7 @@ import h5py
 from data2 import GetTarget
 import random
 
-BASE_LOGDIR = "./train_logs" 
+BASE_LOGDIR = "./train_logs3" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
@@ -93,9 +93,9 @@ def profileit(func):
 
 class Train():
     def __init__(self, args):
-        self.epochs = 600
+        self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 20
+        self.batch_size = 25
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -124,8 +124,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
+        self.weight_folder = "weight3"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log3.txt'
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
@@ -163,6 +163,8 @@ class Train():
                 "vertex_colors": colors.float()  # (N, 3)
             },
             step)
+        del points, colors
+        torch.cuda.empty_cache()
     def run(self):
         self.train_hist = {
             'train_loss': [],
@@ -447,6 +449,7 @@ class Train():
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
+                pts_occu = self.occupancy_grid_(pts)
                 # self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "pts_iter")
 
                 if len(self.train_taget_loader) != len(self.train_loader):
@@ -493,7 +496,7 @@ class Train():
 
                 self.optimizer.zero_grad()
                 preds, occu, probs, cm = self.model(sptensor)
-                # self.tensorboard_launcher(preds[0].float(), iter, [1.0, 0.0, 1.0], "preds")
+                self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
     
                 ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
@@ -506,7 +509,7 @@ class Train():
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
-                    self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
                     self.tensorboard_launcher(preds[0].float(), epoch, [1.0, 0.0, 0.0], "preds", writer2)
                     self.tensorboard_launcher(gt_pts[0].float(), epoch, [0.0, 0.0, 1.0], "gt_pts", writer2)
 
@@ -522,6 +525,7 @@ class Train():
                         mask = probs[idx][0].squeeze(-1) == 1                    
                         occu_= cm[idx][0,mask, :3]
                         self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
+                        del occu_
 
                     gt_probs.append(gt_prob)
                 del gt_prob
@@ -565,7 +569,7 @@ class Train():
         self.train_hist['train_loss'].append(np.mean(loss_buf))
         # return np.mean(loss_buf), epoch_time, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses)
         return np.mean(loss_buf), epoch_time
-
+    # @profileit
     def validation_epoch(self, epoch):
         epoch_start_time = time.time()
         loss_buf = []

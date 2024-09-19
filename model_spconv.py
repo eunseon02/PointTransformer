@@ -144,9 +144,20 @@ class PointCloud3DCNN(nn.Module):
         self.cls2 = spconv.SparseSequential(
             spconv.SubMConv4d(dec_ch[0], 2, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
-        self.conv1d = nn.Conv1d(in_channels=dec_ch[0], out_channels=dec_ch[0], kernel_size=2, stride=1)
-        self.conv = nn.Conv3d(16, 1, kernel_size=3, padding=1)
-        self.dense = spconv.ToDense()
+        self.conv1 = nn.Sequential(
+            nn.Conv3d(dec_ch[0], 8, kernel_size=3, padding=1),
+            nn.BatchNorm3d(8),
+            nn.ReLU())
+        self.conv2 = nn.Sequential(
+            nn.Conv3d(8, 4, kernel_size=5, padding=2),
+            nn.BatchNorm3d(4),
+            nn.ReLU())
+        self.conv3 = nn.Sequential(
+            nn.Conv3d(4, 1, kernel_size=7, padding=3),
+            nn.BatchNorm3d(1),
+            nn.ReLU())
+        # self.conv1d = nn.Conv1d(in_channels=dec_ch[0], out_channels=dec_ch[0], kernel_size=2, stride=1)
+        # self.dense = spconv.ToDense()
 
     def forward(self, sparse_tensor):
         probs = []
@@ -190,13 +201,17 @@ class PointCloud3DCNN(nn.Module):
         cm.append(cm_)
 
         dec_0_dense = dec_0.dense()
-        batch_size, channels, depth, height, width, time = dec_0_dense.shape
-        f_occu = dec_0_dense.permute(0, 2, 3, 4, 1, 5).contiguous()
-        f_occu = f_occu.view(-1, channels, time)
-        f_occu = self.conv1d(f_occu)
-        f_occu = f_occu.view(batch_size, depth, height, width, channels)
-        f_occu = f_occu.permute(0, 4, 1, 2, 3)
-        occu = self.conv(f_occu)
+        f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
+        # batch_size, channels, depth, height, width, time = dec_0_dense.shape
+        # f_occu = dec_0_dense.permute(0, 2, 3, 4, 1, 5).contiguous()
+        # f_occu = f_occu.view(-1, channels, time)
+        # f_occu = self.conv1d(f_occu)
+        # f_occu = f_occu.view(batch_size, depth, height, width, channels)
+        # f_occu = f_occu.permute(0, 4, 1, 2, 3)
+        occu = self.conv1(f_occu)
+        occu = self.conv2(occu)
+        occu = self.conv3(occu)
+        
         # print(occu)
         # occu = torch.tanh(occu) # batch, 1, D, W, H
 
@@ -266,6 +281,8 @@ class PointCloud3DCNN(nn.Module):
             output_coords.append(padded_batch_coords)
 
         output = torch.stack(output_coords, dim=0)  # (batch_size, max_num_points, 3)
+        if output.size(1)==0:
+            raise Exception("no predicted points")
         return output
     
     def postprocess(self, feat, coords):
