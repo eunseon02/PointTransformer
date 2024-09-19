@@ -10,8 +10,8 @@ import logging
 import torch
 import spconv.pytorch as spconv
 import cumm.tensorview as tv
-import ctypes
-cuda_kernel = ctypes.CDLL("./get_target.so")
+# import ctypes
+# cuda_kernel = ctypes.CDLL("./get_target.so")
 
 logging.basicConfig(filename='loss_log.txt', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -178,7 +178,7 @@ class NSLoss(nn.Module):
             cls_loss = self.cls_loss(probs[idx].squeeze(-1), gt_probs[idx].to(preds.device))
             cls_losses = cls_losses + cls_loss
         cls_losses = cls_losses/ len(probs)
-        total_loss = 0.1*cham_loss + 0.3*occu_loss + cls_losses
+        total_loss = 0.01*cham_loss + 0.3*occu_loss + cls_losses
         return total_loss, cham_loss, occu_loss, cls_losses
     
 

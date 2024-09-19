@@ -17,7 +17,7 @@ valid_/
 logs/
 __pycache__/
 train_logs/
-train_logs/
+train_logs*
 *.pth
 *.h5
 logs/
