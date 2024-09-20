@@ -5,10 +5,6 @@ check/
 sample/
 dataset/
 dataset2/
-loss_log.txt
-train_log.txt
-train_log_spconv.txt
-train_log2.txt
 model_epoch_best_129.pth
 train_/
 valid_/
@@ -16,8 +12,7 @@ valid_/
 *.profile
 logs/
 __pycache__/
-train_logs/
-train_logs*
+train_log*
 *.pth
 *.h5
 logs/

@@ -17,3 +17,4 @@ Epoch [7/300] - Train Loss: nan, Validation Loss: 0.8263, Time: 150.2476s
 Epoch [1/300] - Train Loss: 0.8169, Validation Loss: 0.8421, Time: 177.9410s
 Epoch [2/300] - Train Loss: 0.8018, Validation Loss: 0.8250, Time: 146.3606s
 Epoch [1/300] - Train Loss: 0.7668, Validation Loss: 0.9312, Time: 167.1500s
+Epoch [2/300] - Train Loss: 0.6997, Validation Loss: 0.7314, Time: 147.9765s
