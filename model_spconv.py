@@ -211,14 +211,8 @@ class PointCloud3DCNN(nn.Module):
         # f_occu = f_occu.view(batch_size, depth, height, width, channels)
         # f_occu = f_occu.permute(0, 4, 1, 2, 3)
         occu = self.conv1(f_occu)
-        print(f"After conv1: {occu.min()}, {occu.max()}")
-
         occu = self.conv2(occu)
-        print(f"After conv2: {occu.min()}, {occu.max()}")
-
         occu = self.conv3(occu) # batch_size, channels, depth, height, width
-        print(f"After conv3: {occu.min()}, {occu.max()}")
-
         # occu = torch.tanh(occu) # batch, 1, D, W, H
         
         preds = self.get_pointcloud(occu)
