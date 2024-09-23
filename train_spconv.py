@@ -40,7 +40,7 @@ import h5py
 from data2 import GetTarget
 import random
 
-BASE_LOGDIR = "./train_logs3" 
+BASE_LOGDIR = "./train_logs6" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
@@ -124,8 +124,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight3"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log3.txt'
+        self.weight_folder = "weight6"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log6.txt'
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
@@ -199,7 +199,9 @@ class Train():
                 self.valid_get_target = GetTarget(self.valid_target_dir)
                 self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
-            
+            if (epoch+1) % 30 == 0:
+                self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
+
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
                 self._snapshot(epoch + 1)
@@ -495,9 +497,11 @@ class Train():
                 gt_occu = self.occupancy_grid_(gt_pts)
 
                 self.optimizer.zero_grad()
-                preds, occu, probs, cm = self.model(sptensor)
+                preds, occu, probs, cm, decoding = self.model(sptensor)
+                
                 self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
-    
+                self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+
                 ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
                 # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
@@ -508,6 +512,7 @@ class Train():
                 if iter == 40:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
                     self.tensorboard_launcher(preds[0].float(), epoch, [1.0, 0.0, 0.0], "preds", writer2)
@@ -518,6 +523,15 @@ class Train():
                 gt_probs = []
                 for idx in range(len(probs)):
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
+                    mask = gt_prob[0] == 1
+                    occu_= cm[idx][0,mask, :3]
+                    self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm_iter", writer3)
+                    mask = probs[idx][0].squeeze(-1) == 1                    
+                    occu_= cm[idx][0,mask, :3]
+                    self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob_iter", writer3)
+                    del occu_
+                
+                    ## for debugging
                     if idx ==2 and iter == 40:
                         mask = gt_prob[0] == 1
                         occu_= cm[idx][0,mask, :3]
@@ -555,8 +569,8 @@ class Train():
                         transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=3000)
                         prev_preds.append(transformed_pred)
                         del transformed_pred
-                if epoch % 20 == 0:
-                    self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
+                # if epoch % 20 == 0:
+                #     self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
                 # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, cham_loss, occu_loss, cls_losses, occu, probs, cm, sptensor, gt_occu,occupancy_grids
@@ -635,7 +649,7 @@ class Train():
                     sptensor = self.preprocess(pts)
                     gt_occu = self.occupancy_grid_(gt_pts)
                     
-                    preds, occu, probs, cm = self.model(sptensor)                    
+                    preds, occu, probs, cm, _ = self.model(sptensor)                    
                     
                     # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
                     # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
