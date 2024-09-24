@@ -96,7 +96,7 @@ class PointCloud3DCNN(nn.Module):
         )
         ## decoder
         self.Decoder5 = spconv.SparseSequential(
-            spconv.SparseConvTranspose4d(dec_ch[4], dec_ch[3], kernel_size=3),
+            spconv.SparseInverseConv4d(dec_ch[4], dec_ch[3], kernel_size=3,indice_key="spconv5"),
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(dec_ch[3], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm5d"), 
@@ -107,7 +107,7 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[3], 2, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
         )
         self.Decoder4 = spconv.SparseSequential(
-            spconv.SparseConvTranspose4d(dec_ch[3], dec_ch[2], kernel_size=3),
+            spconv.SparseInverseConv4d(dec_ch[3], dec_ch[2], kernel_size=3,indice_key="spconv4"),
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm4d"),  
@@ -118,7 +118,7 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[2], 2, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
         )
         self.Decoder3 = spconv.SparseSequential(
-            spconv.SparseConvTranspose4d(dec_ch[2], dec_ch[1], kernel_size=3),
+            spconv.SparseInverseConv4d(dec_ch[2], dec_ch[1], kernel_size=3,indice_key="spconv3"),
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(dec_ch[1], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm3d"),  
@@ -129,7 +129,7 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[1], 2, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
         )
         self.Decoder2 = spconv.SparseSequential(
-            spconv.SparseConvTranspose4d(dec_ch[1], dec_ch[0], kernel_size=3),
+            spconv.SparseInverseConv4d(dec_ch[1], dec_ch[0], kernel_size=3,indice_key="spconv2"),
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm2d"), 
@@ -144,11 +144,21 @@ class PointCloud3DCNN(nn.Module):
             nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
             nn.ReLU()
         )
-        # self.Decoder0 = spconv.SparseSequential(
-        #     spconv.SparseConvTranspose3d(),
-        #      nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
-        #     nn.ReLU()
-        # )           
+        self.Conv1 = spconv.SparseSequential(
+            spconv.SparseConvTranspose4d(16, 8, kernel_size=(3, 3, 3, 1), stride=1, padding=(1, 1, 1, 0)),
+            nn.BatchNorm1d(8, momentum=0.1),
+            nn.ReLU()
+        )           
+        self.Conv2 = spconv.SparseSequential(
+            spconv.SparseConvTranspose4d(8, 4, kernel_size=(3, 3, 3, 1), stride=1, padding=(1, 1, 1, 0)),
+             nn.BatchNorm1d(4, momentum=0.1),
+            nn.ReLU()
+        )           
+        self.Conv3 = spconv.SparseSequential(
+            spconv.SparseConvTranspose4d(4, 1, kernel_size=(3, 3, 3, 1), stride=1, padding=(1, 1, 1, 0)),
+             nn.BatchNorm1d(1, momentum=0.1),
+            nn.ReLU()
+        )     
 
         # self.conv1d = nn.Conv1d(in_channels=dec_ch[0], out_channels=dec_ch[0], kernel_size=2, stride=1)
         # self.conv1 = nn.Conv3d(16, 8, kernel_size=3, padding=1)
@@ -184,6 +194,8 @@ class PointCloud3DCNN(nn.Module):
         cm_, pred_prob = self.cls_postprocess(feat_cls5.indices, pred_prob)
         probs.append(pred_prob)
         cm.append(cm_)
+        # print(dec_3.features.shape)
+        # print(enc_3.features.shape)
 
         dec_3 = dec_3 + enc_3
         dec_2 = self.Decoder4(dec_3) # 13 x 30 x 30
@@ -208,29 +220,15 @@ class PointCloud3DCNN(nn.Module):
         cm_, pred_prob = self.cls_postprocess(feat_cls2.indices, pred_prob)
         probs.append(pred_prob)
         cm.append(cm_)
-
+        
         dec_0_dense = dec_0.dense()
         f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
-        # batch_size, channels, depth, height, width, time = dec_0_dense.shape
-        # f_occu = dec_0_dense.permute(0, 2, 3, 4, 1, 5).contiguous()
-        # f_occu = f_occu.view(-1, channels, time)
-        # f_occu = self.conv1d(f_occu)
-        # f_occu = f_occu.view(batch_size, depth, height, width, channels)
-        # f_occu = f_occu.permute(0, 4, 1, 2, 3)
-        occu = self.conv1(f_occu)
-        print(occu.shape)
-        occu = self.conv2(occu)
-        print(occu.shape)
-
-        occu = self.conv3(occu)
-        print(occu.shape)
-        
-        
-        
-        
-        # print(occu)
-        # occu = torch.tanh(occu) # batch, 1, D, W, H
-
+        # sparse = spconv.SparseConvTensor.from_dense(f_occu)
+        x = self.Conv1(dec_0)
+        x = self.Conv2(x)
+        x = self.Conv3(x)
+        x_dense = x.dense()
+        occu = x_dense[...,0] + x_dense[...,1]
         dec_0 = self.Decoder1(dec_0)
         feat = self.feat_postprocess(dec_0) # batch, n, 12
         if feat.requires_grad:

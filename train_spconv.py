@@ -40,7 +40,7 @@ import h5py
 from data2 import GetTarget
 import random
 
-BASE_LOGDIR = "./train_logs6" 
+BASE_LOGDIR = "./train_logs" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
@@ -95,7 +95,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 25
+        self.batch_size = 10
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -105,7 +105,7 @@ class Train():
             self._load_pretrain(args.model_path)
         
 
-        self.h5_file_path = "lidar_data_64.h5"
+        self.h5_file_path = "lidar_data_32.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -124,8 +124,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight6"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log6.txt'
+        self.weight_folder = "weight"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log.txt'
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
