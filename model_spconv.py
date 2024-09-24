@@ -137,8 +137,10 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Decoder1 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[0], 3*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
-            nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
+            spconv.SubMConv4d(dec_ch[0], 1, kernel_size=3, stride=1, indice_key="subm1"),
+            # nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
+            nn.BatchNorm1d(1, momentum=0.1),
+
             nn.ReLU()
         )
         self.cls2 = spconv.SparseSequential(
@@ -202,17 +204,10 @@ class PointCloud3DCNN(nn.Module):
         
         dec_0 = self.Decoder1(dec_0)
         dec_0_dense = dec_0.dense()  # batch_size, channels, depth, height, width, time
-        # f_occu = dec_0_dense[...,0] 
-        f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
-        # batch_size, channels, depth, height, width, time = dec_0_dense.shape
-        # f_occu = dec_0_dense.permute(0, 2, 3, 4, 1, 5).contiguous()
-        # f_occu = f_occu.view(-1, channels, time)
-        # f_occu = self.conv1d(f_occu)
-        # f_occu = f_occu.view(batch_size, depth, height, width, channels)
-        # f_occu = f_occu.permute(0, 4, 1, 2, 3)
-        occu = self.conv1(f_occu)
-        occu = self.conv2(occu)
-        occu = self.conv3(occu) # batch_size, channels, depth, height, width
+        occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
+        # occu = self.conv1(f_occu)
+        # occu = self.conv2(occu)
+        # occu = self.conv3(occu) # batch_size, channels, depth, height, width
         # occu = torch.tanh(occu) # batch, 1, D, W, H
         
         preds = self.get_pointcloud(occu)

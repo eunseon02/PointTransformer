@@ -40,7 +40,7 @@ import h5py
 from data2 import GetTarget
 import random
 
-BASE_LOGDIR = "./train_logs7" 
+BASE_LOGDIR = "./train_logs8" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
@@ -129,8 +129,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight7"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log7.txt'
+        self.weight_folder = "weight8"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log8.txt'
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
@@ -447,6 +447,7 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
+                print(data_file_path)
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
