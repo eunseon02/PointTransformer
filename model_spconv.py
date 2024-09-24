@@ -63,7 +63,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Encoder2 = spconv.SparseSequential(
-            spconv.SparseConv4d(enc_ch[0], enc_ch[1], kernel_size=3, stride=2, padding=1,indice_key="spconv2"),
+            spconv.SparseConv4d(enc_ch[0], enc_ch[1], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding=(1, 1, 1, 0),indice_key="spconv2"),
             nn.BatchNorm1d(enc_ch[1], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(enc_ch[1], enc_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm2"),
@@ -71,7 +71,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Encoder3 = spconv.SparseSequential(
-            spconv.SparseConv4d(enc_ch[1], enc_ch[2], kernel_size=3, stride=2, padding=1,indice_key="spconv3"), 
+            spconv.SparseConv4d(enc_ch[1], enc_ch[2], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding=(1, 1, 1, 0),indice_key="spconv3"), 
             nn.BatchNorm1d(enc_ch[2], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(enc_ch[2], enc_ch[2], kernel_size=3, stride=1, padding=1,indice_key="subm3"),
@@ -79,7 +79,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Encoder4 = spconv.SparseSequential(
-            spconv.SparseConv4d(enc_ch[2], enc_ch[3], kernel_size=3, stride=2, padding=1,indice_key="spconv4"),
+            spconv.SparseConv4d(enc_ch[2], enc_ch[3], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding=(1, 1, 1, 0),indice_key="spconv4"),
             nn.BatchNorm1d(enc_ch[3], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(enc_ch[3], enc_ch[3], kernel_size=3, stride=1, padding=1,indice_key="subm4"),
@@ -87,7 +87,7 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Encoder5 = spconv.SparseSequential(
-            spconv.SparseConv4d(enc_ch[3], enc_ch[4], kernel_size=3, stride=2, padding=1,indice_key="spconv5"),
+            spconv.SparseConv4d(enc_ch[3], enc_ch[4], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding=(1, 1, 1, 0),indice_key="spconv5"),
             nn.BatchNorm1d(enc_ch[4], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(enc_ch[4], enc_ch[4], kernel_size=3, stride=1, padding=1,indice_key="subm5"),
@@ -96,10 +96,10 @@ class PointCloud3DCNN(nn.Module):
         )
         ## decoder
         self.Decoder5 = spconv.SparseSequential(
-            spconv.SparseInverseConv4d(dec_ch[4], dec_ch[3], kernel_size=3,indice_key="spconv5"),
+            spconv.SparseConvTranspose4d(dec_ch[4], dec_ch[3], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[3], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm5d"), 
+            spconv.SubMConv4d(dec_ch[3], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm_4"), 
             nn.BatchNorm1d(dec_ch[3], momentum=0.1),
             nn.ReLU(),
         )
@@ -107,10 +107,10 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[3], 2, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
         )
         self.Decoder4 = spconv.SparseSequential(
-            spconv.SparseInverseConv4d(dec_ch[3], dec_ch[2], kernel_size=3,indice_key="spconv4"),
+            spconv.SparseConvTranspose4d(dec_ch[3], dec_ch[2], kernel_size=(3, 3, 3, 1), stride=(2, 1, 1, 1), padding = (1, 0, 0, 0)),
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm4d"),  
+            spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_3"),  
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU()
         )
@@ -118,10 +118,10 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[2], 2, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
         )
         self.Decoder3 = spconv.SparseSequential(
-            spconv.SparseInverseConv4d(dec_ch[2], dec_ch[1], kernel_size=3,indice_key="spconv3"),
+            spconv.SparseConvTranspose4d(dec_ch[2], dec_ch[1], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding = (1, 0, 0, 1)),
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[1], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm3d"),  
+            spconv.SubMConv4d(dec_ch[1], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm_3"),  
             nn.BatchNorm1d(dec_ch[1], momentum=0.1),
             nn.ReLU()
         )
@@ -129,7 +129,7 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[1], 2, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
         )
         self.Decoder2 = spconv.SparseSequential(
-            spconv.SparseInverseConv4d(dec_ch[1], dec_ch[0], kernel_size=3,indice_key="spconv2"),
+            spconv.SparseConvTranspose4d(dec_ch[1], dec_ch[0], kernel_size=3),
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU(),
             spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm2d"), 
@@ -181,14 +181,24 @@ class PointCloud3DCNN(nn.Module):
     def forward(self, sparse_tensor):
         probs = []
         cm = []
-
+    
         enc_0 = self.Encoder1(sparse_tensor)
+        print(enc_0.dense().shape)
         enc_1 = self.Encoder2(enc_0)
+        print(enc_1.dense().shape)
         enc_2 = self.Encoder3(enc_1)
+        print(enc_2.dense().shape)
+
         enc_3 = self.Encoder4(enc_2)
+        print(enc_3.dense().shape)
+
         enc_4 = self.Encoder5(enc_3)
+        print(enc_4.dense().shape)
+
 
         dec_3 = self.Decoder5(enc_4)
+        print(dec_3.dense().shape)
+
         feat_cls5 = self.cls5(dec_3) # 7 x 15 x 15
         pred_prob = F.softmax(feat_cls5.features, 1)[:, 1]
         cm_, pred_prob = self.cls_postprocess(feat_cls5.indices, pred_prob)
@@ -197,15 +207,16 @@ class PointCloud3DCNN(nn.Module):
         # print(dec_3.features.shape)
         # print(enc_3.features.shape)
 
-        dec_3 = dec_3 + enc_3
+        # dec_3 = dec_3 + enc_3
         dec_2 = self.Decoder4(dec_3) # 13 x 30 x 30
+        print(dec_2.dense().shape)
         feat_cls4 = self.cls4(dec_2)
         pred_prob = F.softmax(feat_cls4.features, 1)[:, 1]
         cm_, pred_prob = self.cls_postprocess(feat_cls4.indices, pred_prob)
         probs.append(pred_prob)
         cm.append(cm_)
         
-        dec_2 = dec_2 + enc_2
+        # dec_2 = dec_2 + enc_2
         dec_1 = self.Decoder3(dec_2) # 25 x 60 x 60
         feat_cls3 = self.cls3(dec_1)
         pred_prob = F.softmax(feat_cls3.features, 1)[:, 1]
