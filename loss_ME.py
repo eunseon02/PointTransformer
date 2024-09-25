@@ -67,7 +67,7 @@ class NSLoss(nn.Module):
     def forward(self, pred_occu, gt_occu, preds, gt_pts):
         loss1 = self.compute_occupancy_loss(pred_occu, gt_occu)
 
-        loss2 = self.compute_chamfer_loss(preds, gts)
+        loss2 = self.compute_chamfer_loss(preds, gt_pts)
 
         total_loss = loss1 + 0.01 * loss2
 
