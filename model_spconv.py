@@ -159,6 +159,7 @@ class PointCloud3DCNN(nn.Module):
             nn.Conv3d(4, 1, kernel_size=(7, 5, 5), padding=(3, 2, 2)),
             nn.ReLU(),
             nn.BatchNorm3d(1))
+        self.Linear = nn.Linear(dec_ch[0], 1)
 
     def forward(self, sparse_tensor):
         probs = []
@@ -212,9 +213,13 @@ class PointCloud3DCNN(nn.Module):
         
         dec_0_dense = dec_0.dense()
         f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
-        occu = self.conv1(f_occu)
-        occu = self.conv2(occu)
-        occu = self.conv3(occu)
+        batch_size, channels, depth, height, width = f_occu.shape
+
+        flat = f_occu.view(batch_size, -1, channels)
+        occu = self.Linear(flat)
+        occu = occu.view(batch_size, 1, depth, width, height)
+
+
         # sparse = spconv.SparseConvTensor.from_dense(f_occu)
         # x = self.Conv1(dec_0)
         # x = self.Conv2(x)
