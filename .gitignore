@@ -21,4 +21,4 @@ train_logs*
 *.pth
 *.h5
 logs/
-
+MinkowskiEngine/

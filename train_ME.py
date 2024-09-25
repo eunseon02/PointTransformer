@@ -26,7 +26,7 @@ import io
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from loss import NSLoss
+from loss_ME import NSLoss
 import gc
 import logging
 from collections import OrderedDict
@@ -61,15 +61,15 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 10
+        self.batch_size = 2
         self.device = cfg.device
         torch.cuda.set_device(self.device)
-        self.model = PointCloud3DCNN(self.batch_size, in_channels=4, out_channels=4, dimension=4, n_depth=4).to(self.device)
+        self.model = PointCloud3DCNN(self.batch_size, in_channels=12, out_channels=12, dimension=4, n_depth=4).to(self.device)
         self.model_path = args.model_path
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.h5_file_path = "lidar_data_32.h5"
+        self.h5_file_path = "lidar_data.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -139,9 +139,6 @@ class Train():
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
             writer2.add_scalar("Loss/train", train_loss, epoch)
-            # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
-            # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
-            # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
             val_loss = self.validation_epoch(epoch)
             writer2.add_scalar("Loss/valid", val_loss, epoch)
 
@@ -149,7 +146,6 @@ class Train():
                 print("Regenerate train loader")
                 self.train_get_target = GetTarget(self.train_target_dir)
                 self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-                # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
             if len(self.val_taget_loader) != len(self.val_loader):
                 print("Regenerate valid loader")
                 self.valid_get_target = GetTarget(self.valid_target_dir)
@@ -255,20 +251,31 @@ class Train():
             # indices_combined = torch.cat([batch_indices, indices_torch], dim=1)
 
 
-            all_voxels.append(voxels_flatten)
-            all_indices.append(indices_combined.int())
+            all_voxels.append(voxels_flatten) # N X (self.model.num_point_features X self.model.max_num_points_per_voxel)
+            all_indices.append(indices_combined.int()) # N x (batch, D, W, H, t)
             
         features_tc = torch.cat(all_voxels, dim=0)
         indices_tc = torch.cat(all_indices, dim=0)
-        print(features_tc.shape)
-        # print("all_indices", all_indices.shape)
         sparse_tensor = ME.SparseTensor(features=features_tc,
                                         coordinates=indices_tc,
                                         quantization_mode=ME.SparseTensorQuantizationMode.UNWEIGHTED_AVERAGE)
-        print(sparse_tensor.dense()[0].shape)
+        
+        
         del voxels_torch, indices_torch, relative_pose, voxel_centers, all_voxels, all_indices
         return sparse_tensor
     
+    def coords_to_seq(self, coord):
+        batch_size = coord.shape[0]
+        all_indices = []
+
+        for batch_idx in range(batch_size):
+            
+            pc_single = coord[batch_idx]
+            all_indices.append(pc_single)
+            
+            
+        return all_indices
+
     def occupancy_grid_(self, pc):
         from spconv.utils import Point2VoxelGPU3d
         from spconv.pytorch.utils import PointToVoxel
@@ -307,7 +314,7 @@ class Train():
                                         quantization_mode=ME.SparseTensorQuantizationMode.UNWEIGHTED_AVERAGE)
         del indices_torch, all_voxels, all_indices
 
-        return sparse_tensor    
+        return sparse_tensor , indices_tc
     
 
     def occupancy_grid(self, pc, grid_size, voxel_size, device='cpu'):
@@ -413,20 +420,20 @@ class Train():
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
-                pts_occu = self.occupancy_grid_(pts)
+                pts_occu, _ = self.occupancy_grid_(pts)
                 # self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "pts_iter")
 
-                if len(self.train_taget_loader) != len(self.train_loader):
-                    print(f"calculate : not matching {len(self.train_taget_loader)} & {len(self.train_loader)}")
-                    output_directory = "train_"
-                    file_path = os.path.join(output_directory, f'{iter}.joblib')
-                    occupancy_grids = []
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
-                    occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
-                    os.makedirs(output_directory, exist_ok=True)
-                    joblib.dump(occupancy_grids, file_path)
+                # if len(self.train_taget_loader) != len(self.train_loader):
+                #     print(f"calculate : not matching {len(self.train_taget_loader)} & {len(self.train_loader)}")
+                #     output_directory = "train_"
+                #     file_path = os.path.join(output_directory, f'{iter}.joblib')
+                #     occupancy_grids = []
+                #     occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                #     occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                #     occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                #     occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                #     os.makedirs(output_directory, exist_ok=True)
+                #     joblib.dump(occupancy_grids, file_path)
 
                 # concat
                 if len(prev_preds) > 0:
@@ -456,56 +463,37 @@ class Train():
                     
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
-                gt_occu = self.occupancy_grid_(gt_pts)
-
+                _,indices= self.occupancy_grid_(gt_pts)
+                
+                cm = sptensor.coordinate_manager
+                zeros = torch.zeros((indices.size(0), 1), device=pts.device)
+                gt_pts_with_t = torch.cat([indices, zeros], dim=1)
+                target_key, _ = cm.insert_and_map(
+                    gt_pts_with_t.int(),
+                    string_id="target",
+                )
                 self.optimizer.zero_grad()
-                preds, occu, probs, cm, decoding = self.model(sptensor)
+                preds, occu, gt_occu = self.model(sptensor, target_key, True)
+                # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
+                # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+
+                # ## check preprocess & occupancy grid
+                # # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
+                # # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
+                # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), iter, [1.0, 0.0, 0.0], "target")
+                # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[1].squeeze(0)), iter, [1.0, 1.0, 0.0], "target2")
+                # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), iter, [1.0, 1.0, 0.0], "target3")
+                # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
+                # if iter == 40:
+                #     print("tensorboard_launcher")
+                #     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
+                #     self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
+                #     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
+                #     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
+                #     self.tensorboard_launcher(preds[0].float(), epoch, [1.0, 0.0, 0.0], "preds", writer2)
+                #     self.tensorboard_launcher(gt_pts[0].float(), epoch, [0.0, 0.0, 1.0], "gt_pts", writer2)
                 
-                self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
-                self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-
-                ## check preprocess & occupancy grid
-                # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
-                # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
-                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[0].squeeze(0)), iter, [1.0, 0.0, 0.0], "target")
-                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[1].squeeze(0)), iter, [1.0, 1.0, 0.0], "target2")
-                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), iter, [1.0, 1.0, 0.0], "target3")
-                # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
-                if iter == 40:
-                    print("tensorboard_launcher")
-                    self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
-                    self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
-                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
-                    self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
-                    self.tensorboard_launcher(preds[0].float(), epoch, [1.0, 0.0, 0.0], "preds", writer2)
-                    self.tensorboard_launcher(gt_pts[0].float(), epoch, [0.0, 0.0, 1.0], "gt_pts", writer2)
-
-                ## get_target
-                idx = 0
-                gt_probs = []
-                for idx in range(len(probs)):
-                    gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
-                    mask = gt_prob[0] == 1
-                    occu_= cm[idx][0,mask, :3]
-                    self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm_iter", writer3)
-                    mask = probs[idx][0].squeeze(-1) == 1                    
-                    occu_= cm[idx][0,mask, :3]
-                    self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob_iter", writer3)
-                    del occu_
-                
-                    ## for debugging
-                    if idx ==2 and iter == 40:
-                        mask = gt_prob[0] == 1
-                        occu_= cm[idx][0,mask, :3]
-                        self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm", writer3)
-                        mask = probs[idx][0].squeeze(-1) == 1                    
-                        occu_= cm[idx][0,mask, :3]
-                        self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
-                        del occu_
-
-                    gt_probs.append(gt_prob)
-                del gt_prob
-                loss, cham_loss, occu_loss, cls_losses = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)
+                loss = self.criterion(occu, gt_occu, preds, gt_pts)
                 # cham_loss_buf.append(cham_loss.item())
                 # occu_loss_buf.append(occu_loss.item())
                 # cls_losses_buf.append(cls_losses.item())
@@ -535,7 +523,7 @@ class Train():
                 #     self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, cham_loss, occu_loss, cls_losses, occu, probs, cm, sptensor, gt_occu,occupancy_grids
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, occu, sptensor, gt_occu,occupancy_grids
                 torch.cuda.empty_cache()
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)
@@ -573,17 +561,17 @@ class Train():
                     lidar_pos = lidar_pos.to(self.device)
                     lidar_quat = lidar_quat.to(self.device)
            
-                    if len(self.val_taget_loader) != len(self.val_loader):
-                        print(f"calculate : not matching {len(self.val_taget_loader)} & {len(self.val_loader)}")
-                        output_directory = "valid_"
-                        file_path = os.path.join(output_directory, f'{iter}.joblib')
-                        occupancy_grids = []
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
-                        occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
-                        os.makedirs(output_directory, exist_ok=True)
-                        joblib.dump(occupancy_grids, file_path)
+                    # if len(self.val_taget_loader) != len(self.val_loader):
+                    #     print(f"calculate : not matching {len(self.val_taget_loader)} & {len(self.val_loader)}")
+                    #     output_directory = "valid_"
+                    #     file_path = os.path.join(output_directory, f'{iter}.joblib')
+                    #     occupancy_grids = []
+                    #     occupancy_grids.append(self.occupancy_grid(gt_pts, (7, 15, 15), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([5, 14, 14], dtype=torch.float32)))
+                    #     occupancy_grids.append(self.occupancy_grid(gt_pts, (13, 30, 30), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([11, 29, 29], dtype=torch.float32)))
+                    #     occupancy_grids.append(self.occupancy_grid(gt_pts, (25, 60, 60), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([24, 59, 59], dtype=torch.float32)))
+                    #     occupancy_grids.append(self.occupancy_grid(gt_pts, (50, 120, 120), (self.max_coord_range_zyx - self.min_coord_range_zyx) / torch.tensor([50, 120, 120], dtype=torch.float32)))
+                    #     os.makedirs(output_directory, exist_ok=True)
+                    #     joblib.dump(occupancy_grids, file_path)
 
 
                     # concat
@@ -607,33 +595,44 @@ class Train():
                         batch_size, n, _ = pts.shape
                         zeros = torch.zeros((batch_size, n, 1), device=pts.device)
                         pts = torch.cat([pts, zeros], dim=2)
+                        
+                        
                     pts = torch.nan_to_num(pts, nan=0.0)
                     sptensor = self.preprocess(pts)
-                    gt_occu = self.occupancy_grid_(gt_pts)
+                    _,indices = self.occupancy_grid_(gt_pts)
                     
-                    preds, occu, probs, cm, _ = self.model(sptensor)                    
+                    cm = sptensor.coordinate_manager
+                    zeros = torch.zeros((indices.size(0), 1), device=pts.device)
+                    gt_pts_with_t = torch.cat([indices, zeros], dim=1)
+                    target_key, _ = cm.insert_and_map(
+                        gt_pts_with_t.int(),
+                        string_id="target",
+                    )
+
+                    
+                    preds, occu, gt_occu = self.model(sptensor, target_key, False)              
                     
                     # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
                     # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
 
-                    if iter == 120:
-                        print("tensorboard_launcher")
-                        self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid", writer)
-                        self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid", writer)
+                    # if iter == 120:
+                    #     print("tensorboard_launcher")
+                    #     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_valid", writer)
+                    #     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_valid", writer)
                         
                     #     self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()), epoch, [0.0, 1.0, 1.0], "pts_valid")
 
 
-                    ## get_target
-                    idx = 0
-                    gt_probs = []
-                    for idx in range(len(probs)):
-                        gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
-                        gt_probs.append(gt_prob)
-                    del gt_prob
+                    # ## get_target
+                    # idx = 0
+                    # gt_probs = []
+                    # for idx in range(len(probs)):
+                    #     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
+                    #     gt_probs.append(gt_prob)
+                    # del gt_prob
 
                     
-                    loss, cham_loss, occu_loss, cls_losses = self.criterion(preds, occu, gt_pts, gt_occu.dense(), probs, gt_probs)                    
+                    loss = self.criterion(occu, gt_occu, preds, gt_pts)               
                     loss_buf.append(loss.item())
                     
                     # transform
