@@ -139,17 +139,17 @@ class Train():
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
             writer2.add_scalar("Loss/train", train_loss, epoch)
-            val_loss = self.validation_epoch(epoch)
-            writer2.add_scalar("Loss/valid", val_loss, epoch)
+            # val_loss = self.validation_epoch(epoch)
+            # writer2.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
                 print("Regenerate train loader")
                 self.train_get_target = GetTarget(self.train_target_dir)
                 self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-            if len(self.val_taget_loader) != len(self.val_loader):
-                print("Regenerate valid loader")
-                self.valid_get_target = GetTarget(self.valid_target_dir)
-                self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+            # if len(self.val_taget_loader) != len(self.val_loader):
+            #     print("Regenerate valid loader")
+            #     self.valid_get_target = GetTarget(self.valid_target_dir)
+            #     self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
             if (epoch+1) % 30 == 0:
                 self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
@@ -160,7 +160,7 @@ class Train():
                 if train_loss < best_loss:
                     best_loss = train_loss
                     self._snapshot('best_{}'.format(epoch))
-            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
+            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Time: {epoch_time:.4f}s"
             self.log(log_message)
         # finish all epoch
         self._snapshot(epoch + 1)
