@@ -17,7 +17,7 @@ class PointCloudDataset(Dataset):
     def __init__(self, filename, batch, split='train'):
         self.split = split
         self.filename = filename
-        self.batch_count = 0  # num batch folder
+        self.batch_count = 0 # num batch folder
         self.h5_file = h5py.File(self.filename, 'r')
         
         self.batches = []

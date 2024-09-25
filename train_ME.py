@@ -15,7 +15,7 @@ import open3d as o3d
 import spconv.pytorch as spconv
 import cumm.tensorview as tv
 import sys
-from model_spconv import PointCloud3DCNN
+from model_ME import PointCloud3DCNN
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -39,6 +39,8 @@ import joblib
 import h5py
 from data2 import GetTarget
 import random
+import MinkowskiEngine as ME
+from debug import occupancy_grid_to_coords, tensor_to_ply, save_single_occupancy_grid_as_ply, profileit
 
 BASE_LOGDIR = "./train_logs2" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
@@ -53,80 +55,34 @@ def pad_or_trim_cloud(pc, target_size=3000):
     elif n > target_size:
         pc = pc[:target_size, :]  
     return pc
-def occupancy_grid_to_coords(occupancy_grid):
-    _, _, H, W, D = occupancy_grid.shape
-    occupancy_grid = occupancy_grid[0, 0]
-    indices = torch.nonzero(occupancy_grid > 0, as_tuple=False) 
-    return indices
-def tensor_to_ply(tensor, filename):
-    # print("tensor", tensor.shape)
-    points = tensor.cpu().detach().numpy()
-    points = points.astype(np.float64)
-    # points=  points[0]
-    if points.shape[1] != 3:
-        raise ValueError(f"Expected point cloud data with shape (n, 3), but got {points.shape}")
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    o3d.io.write_point_cloud(filename, pcd)
-
-def save_single_occupancy_grid_as_ply(occupancy_grid, file_name="occupancy_grid.ply"):
-    # Assume occupancy_grid is of shape (batch_size, 1, H, W, D)
-    _, _, H, W, D = occupancy_grid.shape
-    grid = occupancy_grid[0, 0]  # shape (H, W, D)
-    occupied_voxels = torch.nonzero(grid > 0, as_tuple=False).cpu().numpy()
-    occupied_voxels = occupied_voxels.astype(np.float32)
-    point_cloud = o3d.geometry.PointCloud()
-    point_cloud.points = o3d.utility.Vector3dVector(occupied_voxels)
-    o3d.io.write_point_cloud(file_name, point_cloud)
-    print(f"Saved occupancy grid to {file_name}")
-    
-def profileit(func):
-    def wrapper(*args, **kwargs):
-        datafn = func.__name__ + ".profile" # Name the data file sensibly
-        prof = cProfile.Profile()
-        retval = prof.runcall(func, *args, **kwargs)
-        prof.dump_stats(datafn)
-        return retval
-
-    return wrapper
 
 class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
         self.batch_size = 10
-        self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
-        self.model = PointCloud3DCNN(self.batch_size).to(self.device)
+        self.model = PointCloud3DCNN(self.batch_size, in_channels=4, out_channels=4, dimension=4, n_depth=4).to(self.device)
         self.model_path = args.model_path
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-
         self.h5_file_path = "lidar_data_32.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if self.train_dataset.batch_count != self.batch_size:
-            print(self.train_dataset.batch_count)
-            raise RuntimeError('Wrong batch_size')        
-        
         
         self.val_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'valid')
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if self.val_dataset.batch_count != self.batch_size:
-            print(self.val_dataset.batch_count)
-            raise RuntimeError('Wrong batch_size')
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
         self.weight_folder = "weight2"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log2.txt'
-        
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
         self.max_coord_range_zyx = torch.tensor([1.5, 3.0, 3.0])
@@ -273,8 +229,8 @@ class Train():
             t_values = voxels_torch[:, :, 3] 
             voxels_torch = voxels_torch[:, :, :3]
             relative_pose = torch.where(voxels_torch == 0, torch.tensor(0.0).to(voxels_torch.device), (voxels_torch - voxel_centers.unsqueeze(1)) / self.voxel_size)
-            # relative_pose = torch.cat([relative_pose, t_values.unsqueeze(-1)], dim=2)
-            voxels_flatten = relative_pose.view(-1, 3 * self.model.max_num_points_per_voxel)
+            relative_pose = torch.cat([relative_pose, t_values.unsqueeze(-1)], dim=2)
+            voxels_flatten = relative_pose.view(-1, 4 * self.model.max_num_points_per_voxel)
 
             valid = num_p_in_vx_tv.cpu().numpy() > 0
             indices_torch = indices_torch[valid]
@@ -302,10 +258,14 @@ class Train():
             all_voxels.append(voxels_flatten)
             all_indices.append(indices_combined.int())
             
-        all_voxels = torch.cat(all_voxels, dim=0)
-        all_indices = torch.cat(all_indices, dim=0)
+        features_tc = torch.cat(all_voxels, dim=0)
+        indices_tc = torch.cat(all_indices, dim=0)
+        print(features_tc.shape)
         # print("all_indices", all_indices.shape)
-        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape, self.batch_size)
+        sparse_tensor = ME.SparseTensor(features=features_tc,
+                                        coordinates=indices_tc,
+                                        quantization_mode=ME.SparseTensorQuantizationMode.UNWEIGHTED_AVERAGE)
+        print(sparse_tensor.dense()[0].shape)
         del voxels_torch, indices_torch, relative_pose, voxel_centers, all_voxels, all_indices
         return sparse_tensor
     
@@ -339,10 +299,12 @@ class Train():
             all_voxels.append(occupancy)
             all_indices.append(indices_combined.int())
 
-        all_voxels = torch.cat(all_voxels, dim=0)
-        all_indices = torch.cat(all_indices, dim=0)
+        features_tc = torch.cat(all_voxels, dim=0)
+        indices_tc = torch.cat(all_indices, dim=0)
         
-        sparse_tensor = spconv.SparseConvTensor(all_voxels, all_indices, self.input_shape[:3], self.batch_size)
+        sparse_tensor = ME.SparseTensor(features=features_tc,
+                                        coordinates=indices_tc,
+                                        quantization_mode=ME.SparseTensorQuantizationMode.UNWEIGHTED_AVERAGE)
         del indices_torch, all_voxels, all_indices
 
         return sparse_tensor    
@@ -434,6 +396,8 @@ class Train():
         cham_loss_buf, occu_loss_buf, cls_losses_buf = [], [], []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
             for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
+                # print("1", len(self.train_loader))
+                # print("2", len(self.train_taget_loader))
                 if batch is None:
                     print(f"Skipping batch {iter} because it is None")
                     pbar.update(1)
@@ -449,6 +413,7 @@ class Train():
                 gt_pts = gt_pts.to(self.device)
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
+                pts_occu = self.occupancy_grid_(pts)
                 # self.tensorboard_launcher(pts[0], iter, [1.0, 0.0, 1.0], "pts_iter")
 
                 if len(self.train_taget_loader) != len(self.train_loader):
@@ -491,7 +456,6 @@ class Train():
                     
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts)
-                pts_occu = self.occupancy_grid_(pts)
                 gt_occu = self.occupancy_grid_(gt_pts)
 
                 self.optimizer.zero_grad()
@@ -521,13 +485,13 @@ class Train():
                 gt_probs = []
                 for idx in range(len(probs)):
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
-                    # mask = gt_prob[0] == 1
-                    # occu_= cm[idx][0,mask, :3]
-                    # self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm_iter", writer3)
-                    # mask = probs[idx][0].squeeze(-1) == 1                    
-                    # occu_= cm[idx][0,mask, :3]
-                    # self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob_iter", writer3)
-                    # del occu_
+                    mask = gt_prob[0] == 1
+                    occu_= cm[idx][0,mask, :3]
+                    self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm_iter", writer3)
+                    mask = probs[idx][0].squeeze(-1) == 1                    
+                    occu_= cm[idx][0,mask, :3]
+                    self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob_iter", writer3)
+                    del occu_
                 
                     ## for debugging
                     if idx ==2 and iter == 40:
@@ -546,13 +510,14 @@ class Train():
                 # occu_loss_buf.append(occu_loss.item())
                 # cls_losses_buf.append(cls_losses.item())
                 loss.backward()
-                self.optimizer.step()
+
                 # for name, param in self.model.named_parameters():
                 #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
                 #     if param.grad is not None:
                 #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
                 #     else:
                 #         print(f"Layer: {name} | No gradient calculated!")
+                self.optimizer.step()
                 loss_buf.append(loss.item())
                 
                 # transform
@@ -566,6 +531,8 @@ class Train():
                         transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=3000)
                         prev_preds.append(transformed_pred)
                         del transformed_pred
+                # if epoch % 20 == 0:
+                #     self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
                 # empty memory
                 del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, gt_probs, cham_loss, occu_loss, cls_losses, occu, probs, cm, sptensor, gt_occu,occupancy_grids
@@ -587,6 +554,8 @@ class Train():
         prev_preds = []
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
+                # print("1", len(self.val_taget_loader))
+                # print("2", len(self.val_loader))
                 for iter, (batch, occupancy_grids) in enumerate(zip(self.val_loader, self.val_taget_loader)):
                     if batch is None:
                         print(f"Skipping batch {iter} because it is None")
@@ -638,7 +607,6 @@ class Train():
                         batch_size, n, _ = pts.shape
                         zeros = torch.zeros((batch_size, n, 1), device=pts.device)
                         pts = torch.cat([pts, zeros], dim=2)
-
                     pts = torch.nan_to_num(pts, nan=0.0)
                     sptensor = self.preprocess(pts)
                     gt_occu = self.occupancy_grid_(gt_pts)

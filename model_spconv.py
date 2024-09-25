@@ -11,44 +11,12 @@ from config import config as cfg
 import cumm
 import torch.nn.functional as F
 from os.path import join
-
+from debug import tensor_to_ply
 
 input_shape = (cfg.D, cfg.H, cfg.W)
-
-def tensor_to_ply(tensor, filename):
-    print("tensor", tensor.shape)
-    points = tensor.cpu().detach().numpy()
-    points = points.astype(np.float64)
-    # points=  points[0]
-    if points.shape[1] != 3:
-        raise ValueError(f"Expected point cloud data with shape (n, 3), but got {points.shape}")
-
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    o3d.io.write_point_cloud(filename, pcd)
-
-
-
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
-    
-    def tensorboard_launcher(self, points, step, color, tag):
-        # points = occupancy_grid_to_coords(points)
-        num_points = points.shape[0]
-        colors = torch.tensor(color).repeat(num_points, 1)
-        if num_points == 0:
-            print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
-            # return
-        else:
-            writer.add_3d(
-            tag,
-            {
-                "vertex_positions": points.float(), # (N, 3)
-                "vertex_colors": colors.float()  # (N, 3)
-            },
-            step)
-    
     def __init__(self, batch_size):
         super(PointCloud3DCNN, self).__init__()
         enc_ch = self.ENC_CHANNELS
@@ -101,13 +69,13 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[3], 2, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
         )
         self.Decoder4 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[3], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_4"),  
-            nn.BatchNorm1d(dec_ch[2], momentum=0.1),
-            nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_4"),  
-            nn.BatchNorm1d(dec_ch[2], momentum=0.1),
-            nn.ReLU(),
-            spconv.SparseConvTranspose4d(dec_ch[2], dec_ch[2], kernel_size=(3, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
+            # spconv.SubMConv4d(dec_ch[3], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_4"),  
+            # nn.BatchNorm1d(dec_ch[2], momentum=0.1),
+            # nn.ReLU(),
+            # spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_4"),  
+            # nn.BatchNorm1d(dec_ch[2], momentum=0.1),
+            # nn.ReLU(),
+            spconv.SparseConvTranspose4d(dec_ch[3], dec_ch[2], kernel_size=(3, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
             nn.BatchNorm1d(dec_ch[2], momentum=0.1),
             nn.ReLU(),
         )
@@ -129,13 +97,13 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[1], 2, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
         )
         self.Decoder2 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[1], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm_2"), 
-            nn.BatchNorm1d(dec_ch[0], momentum=0.1),
-            nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm_2"), 
-            nn.BatchNorm1d(dec_ch[0], momentum=0.1),
-            nn.ReLU(),
-            spconv.SparseConvTranspose4d(dec_ch[0], dec_ch[0], kernel_size=(4, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
+            # spconv.SubMConv4d(dec_ch[1], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm_2"), 
+            # nn.BatchNorm1d(dec_ch[0], momentum=0.1),
+            # nn.ReLU(),
+            # spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm_2"), 
+            # nn.BatchNorm1d(dec_ch[0], momentum=0.1),
+            # nn.ReLU(),
+            spconv.SparseConvTranspose4d(dec_ch[1], dec_ch[0], kernel_size=(4, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
             nn.BatchNorm1d(dec_ch[0], momentum=0.1),
             nn.ReLU()
         )
@@ -143,6 +111,9 @@ class PointCloud3DCNN(nn.Module):
             spconv.SubMConv4d(dec_ch[0], 2, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
         self.Decoder1 = spconv.SparseSequential(
+            spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, indice_key="subm_1"),
+            nn.BatchNorm1d(dec_ch[0], momentum=0.1),
+            nn.ReLU(),
             spconv.SubMConv4d(dec_ch[0], 3*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm_1"),
             nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
             nn.ReLU()
@@ -252,7 +223,8 @@ class PointCloud3DCNN(nn.Module):
         for cm, prob in zip(cm_batch, pred_prob_batch):
             cm_padded = F.pad(cm, (0, 0, 0, max_points - cm.size(0)), value=0)  # [n, 3] -> [max_points, 3]
             prob_padded = F.pad(prob, (0, 0, 0, max_points - prob.size(0)), value=0)  # [n, 1] -> [max_points, 1]
-            
+            # print(f"cm size: {cm.size()}, prob size: {prob.size()}, max_points: {max_points}")
+
             cm_batch_padded.append(cm_padded)
             pred_prob_batch_padded.append(prob_padded)
 
