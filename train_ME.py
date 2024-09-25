@@ -504,12 +504,12 @@ class Train():
                 # cls_losses_buf.append(cls_losses.item())
                 loss.backward()
 
-                # for name, param in self.model.named_parameters():
-                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                #     if param.grad is not None:
-                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                #     else:
-                #         print(f"Layer: {name} | No gradient calculated!")
+                for name, param in self.model.named_parameters():
+                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                    if param.grad is not None:
+                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                    else:
+                        print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
