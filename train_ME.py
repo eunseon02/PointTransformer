@@ -61,7 +61,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 2
+        self.batch_size = 16
         self.device = cfg.device
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size, in_channels=12, out_channels=12, dimension=4, n_depth=4).to(self.device)
@@ -504,12 +504,12 @@ class Train():
                 # cls_losses_buf.append(cls_losses.item())
                 loss.backward()
 
-                for name, param in self.model.named_parameters():
-                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                    if param.grad is not None:
-                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                    else:
-                        print(f"Layer: {name} | No gradient calculated!")
+                # for name, param in self.model.named_parameters():
+                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                #     if param.grad is not None:
+                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                #     else:
+                #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 
