@@ -402,7 +402,7 @@ class Train():
         prev_preds = []
         cham_loss_buf, occu_loss_buf, cls_losses_buf = [], [], []
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch + 1}/{self.epochs}", unit="batch") as pbar:
-            for iter, (batch, occupancy_grids) in enumerate(zip(self.train_loader, self.train_taget_loader)):
+            for iter, (batch) in enumerate(self.train_loader):
                 # print("1", len(self.train_loader))
                 # print("2", len(self.train_taget_loader))
                 if batch is None:
@@ -473,7 +473,10 @@ class Train():
                     string_id="target",
                 )
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu = self.model(sptensor, target_key, True)
+                preds, occu, gt_occu, out = self.model(sptensor, target_key, True)
+                # self.tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
+                # self.tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+
                 # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
@@ -484,9 +487,11 @@ class Train():
                 # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[1].squeeze(0)), iter, [1.0, 1.0, 0.0], "target2")
                 # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[2].squeeze(0)), iter, [1.0, 1.0, 0.0], "target3")
                 # # self.tensorboard_launcher(occupancy_grid_to_coords(occupancy_grids[3].squeeze(0)), iter, [1.0, 1.0, 0.0], "target4")
-                # if iter == 40:
-                #     print("tensorboard_launcher")
-                #     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
+                if iter == 1:
+                    print("tensorboard_launcher")
+                    # min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
+                    # dense_tensor = out.dense(min_coordinate=min_coord)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(out), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
                 #     self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
                 #     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
                 #     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
@@ -523,7 +528,7 @@ class Train():
                 #     self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, occu, sptensor, gt_occu,occupancy_grids
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, occu, sptensor, gt_occu
                 torch.cuda.empty_cache()
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)
@@ -544,7 +549,7 @@ class Train():
             with tqdm(total=len(self.val_loader), desc=f"Validation {epoch + 1}/{self.epochs}", unit="batch") as pbar:
                 # print("1", len(self.val_taget_loader))
                 # print("2", len(self.val_loader))
-                for iter, (batch, occupancy_grids) in enumerate(zip(self.val_loader, self.val_taget_loader)):
+                for iter, (batch) in enumerate((self.val_loader)):
                     if batch is None:
                         print(f"Skipping batch {iter} because it is None")
                         pbar.update(1)
@@ -610,7 +615,7 @@ class Train():
                     )
 
                     
-                    preds, occu, gt_occu = self.model(sptensor, target_key, False)              
+                    preds, occu, gt_occu, _ = self.model(sptensor, target_key, False)              
                     
                     # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter")
                     # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
@@ -643,7 +648,7 @@ class Train():
                             del transformed_pred
 
                     # empty memory
-                    del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, occu, sptensor, occupancy_grids, gt_occu
+                    del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, occu, sptensor, gt_occu
                     torch.cuda.empty_cache()
                     pbar.set_postfix(val_loss=np.mean(loss_buf) if loss_buf else 0)
                     pbar.update(1)                

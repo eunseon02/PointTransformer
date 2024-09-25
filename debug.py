@@ -1,4 +1,4 @@
-
+import torch
 def tensor_to_ply(tensor, filename):
     # print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()

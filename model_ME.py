@@ -55,7 +55,7 @@ class PointCloud3DCNN(nn.Module):
         
 
         self.Decoder4 = nn.Sequential(
-            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[3], out_channels=dec_ch[2], kernel_size=3, stride=2, dimension=self.D),
+            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[3], out_channels=dec_ch[2], kernel_size=(3, 3, 3, 1), stride=2, dimension=self.D),
             ME.MinkowskiBatchNorm(dec_ch[2]),
             ME.MinkowskiReLU()
         )
@@ -63,7 +63,7 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
         )
         self.Decoder3 = nn.Sequential(
-            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[2], out_channels=dec_ch[1], kernel_size=3, stride=2, expand_coordinates=True, dimension=self.D),
+            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[2], out_channels=dec_ch[1], kernel_size=(3, 3, 3, 1), stride=2, expand_coordinates=True, dimension=self.D),
             ME.MinkowskiBatchNorm(dec_ch[1]),
             ME.MinkowskiReLU()
         )
@@ -71,7 +71,7 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
         )
         self.Decoder2 = nn.Sequential(
-            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[1], out_channels=dec_ch[0], kernel_size=3, stride=2, expand_coordinates=True, dimension=self.D),
+            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[1], out_channels=dec_ch[0], kernel_size=(3, 3, 3, 1), stride=2, expand_coordinates=True, dimension=self.D),
             ME.MinkowskiBatchNorm(dec_ch[0]),
             ME.MinkowskiReLU()
         )
@@ -80,7 +80,7 @@ class PointCloud3DCNN(nn.Module):
         )
 
         self.Decoder1 = nn.Sequential(
-            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[0], out_channels=self.out_channels, kernel_size=3, stride=2, expand_coordinates=True, dimension=self.D),
+            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[0], out_channels=self.out_channels, kernel_size=(3, 3, 3, 1), stride=2, expand_coordinates=True, dimension=self.D),
             ME.MinkowskiSigmoid()
             # ME.MinkowskiBatchNorm(self.in_channels),
             # ME.MinkowskiReLU()
@@ -111,6 +111,7 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiReLU()
         )    
         self.pruning = ME.MinkowskiPruning()
+        self.conv = nn.Conv3d(in_channels=12, out_channels=1, kernel_size=1)
         self.weight_initialization()
         
     def get_target(self, out, target_key, kernel_size=1):
@@ -132,14 +133,15 @@ class PointCloud3DCNN(nn.Module):
         return target
     def encode(self, sparse_tensor):
         enc_feat = []
-        enc_0 = self.Encoder1(sparse_tensor) # 25 x 60 x 60
+        enc_0 = self.Encoder1(sparse_tensor) # 20 x 60 x 60
         enc_feat.append(enc_0)
-        enc_1 = self.Encoder2(enc_0) # 13 x 30 x 30
+        enc_1 = self.Encoder2(enc_0) # 10 x 30 x 30
         enc_feat.append(enc_1)
-        enc_2 = self.Encoder3(enc_1) # 7 x 15 x 15
+        enc_2 = self.Encoder3(enc_1) # 5 x 15 x 15
         enc_feat.append(enc_2)
-        enc_3 = self.Encoder4(enc_2) # 4, 8, 8
+        enc_3 = self.Encoder4(enc_2) # 3 x 8 x 8
         enc_feat.append(enc_3)
+
         return enc_feat
         
     def forward(self, sparse_tensor, target_key, is_train):
@@ -170,7 +172,7 @@ class PointCloud3DCNN(nn.Module):
             keep = (pred_prob > 0.5).squeeze()
             if torch.any(keep):
                 # Prune and upsample
-                pyramid_output = conv_up_layer(self.pruning(curr_feat, keep))
+                pyramid_output = conv_up_layer(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
                 # Generate final feature for current level
                 final_pruned = self.pruning(feat, keep)
             else:
@@ -185,9 +187,16 @@ class PointCloud3DCNN(nn.Module):
         preds = self.postprocess(pyramid_output)
         preds = preds.view(self.batch_size, -1, self.num_point_features)
         preds = preds[:, :, :3]
+        
+        
+        min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
+        dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
+
+        decoding = self.conv(dense_tensor[0].squeeze(-1)) # torch.Size([2, 1, 56, 120, 120])
+        # print(decoding.shape)
         # print(preds.shape)
         
-        return preds, classifications, targets,
+        return preds, classifications, targets, decoding
     
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx+1}'
