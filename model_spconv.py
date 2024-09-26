@@ -12,9 +12,6 @@ import cumm
 import torch.nn.functional as F
 from os.path import join
 
-
-input_shape = (cfg.D, cfg.H, cfg.W)
-
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
@@ -26,8 +23,6 @@ def tensor_to_ply(tensor, filename):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
-
-
 
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
@@ -159,8 +154,8 @@ class PointCloud3DCNN(nn.Module):
             nn.Conv3d(4, 1, kernel_size=(7, 5, 5), padding=(3, 2, 2)),
             nn.ReLU(),
             nn.BatchNorm3d(1))
-        self.Linear = nn.Linear(dec_ch[0], 1)
-
+        # self.Linear = nn.Linear(dec_ch[0], 1)
+        self.conv = nn.Conv3d(in_channels=16, out_channels=1, kernel_size=1)
     def forward(self, sparse_tensor):
         probs = []
         cm = []
@@ -213,12 +208,12 @@ class PointCloud3DCNN(nn.Module):
         
         dec_0_dense = dec_0.dense()
         f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
-        batch_size, channels, depth, height, width = f_occu.shape
-
-        flat = f_occu.view(batch_size, -1, channels)
-        occu = self.Linear(flat)
-        occu = occu.view(batch_size, 1, depth, width, height)
-
+        
+        # batch_size, channels, depth, height, width = f_occu.shape
+        # flat = f_occu.view(batch_size, -1, channels)
+        # occu = self.Linear(flat)
+        # occu = occu.view(batch_size, 1, depth, width, height)
+        occu = self.conv(f_occu)
 
         # sparse = spconv.SparseConvTensor.from_dense(f_occu)
         # x = self.Conv1(dec_0)

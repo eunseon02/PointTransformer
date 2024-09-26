@@ -186,8 +186,8 @@ class Train():
             # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
             # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
             # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
-            val_loss = self.validation_epoch(epoch)
-            writer2.add_scalar("Loss/valid", val_loss, epoch)
+            # val_loss = self.validation_epoch(epoch)
+            # writer2.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
                 print("Regenerate train loader")
@@ -208,7 +208,7 @@ class Train():
                 if train_loss < best_loss:
                     best_loss = train_loss
                     self._snapshot('best_{}'.format(epoch))
-            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
+            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Time: {epoch_time:.4f}s"
             self.log(log_message)
         # finish all epoch
         self._snapshot(epoch + 1)
