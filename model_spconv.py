@@ -11,6 +11,7 @@ from config import config as cfg
 import cumm
 import torch.nn.functional as F
 from os.path import join
+from decoder import SparseDecoder
 
 def tensor_to_ply(tensor, filename):
     print("tensor", tensor.shape)
@@ -81,79 +82,16 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU(),
         )
         ## decoder
-        self.Decoder5 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[4], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm_5"),  
-            nn.BatchNorm1d(dec_ch[3], momentum=0.1),
-            nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[3], dec_ch[3], kernel_size=3, stride=1, padding=1, indice_key="subm_5"),  
-            nn.BatchNorm1d(dec_ch[3], momentum=0.1),
-            nn.ReLU(),
-            spconv.SparseConvTranspose4d(dec_ch[3], dec_ch[3], kernel_size=(3, 3, 3, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
-            nn.BatchNorm1d(dec_ch[3], momentum=0.1),
-            nn.ReLU(),
-        )
-        self.cls5 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[3], 2, kernel_size=1, stride=2, padding=0, indice_key="subm5d"),  
-        )
-        self.Decoder4 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[3], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_4"),  
-            nn.BatchNorm1d(dec_ch[2], momentum=0.1),
-            nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[2], dec_ch[2], kernel_size=3, stride=1, padding=1, indice_key="subm_4"),  
-            nn.BatchNorm1d(dec_ch[2], momentum=0.1),
-            nn.ReLU(),
-            spconv.SparseConvTranspose4d(dec_ch[2], dec_ch[2], kernel_size=(3, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
-            nn.BatchNorm1d(dec_ch[2], momentum=0.1),
-            nn.ReLU(),
-        )
-        self.cls4 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[2], 2, kernel_size=1, stride=2, padding=0, indice_key="subm4d"),  
-        )
-        self.Decoder3 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[2], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm_3"),  
-            nn.BatchNorm1d(dec_ch[1], momentum=0.1),
-            nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[1], dec_ch[1], kernel_size=3, stride=1, padding=1, indice_key="subm_3"),  
-            nn.BatchNorm1d(dec_ch[1], momentum=0.1),
-            nn.ReLU(),
-            spconv.SparseConvTranspose4d(dec_ch[1], dec_ch[1], kernel_size=(3, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
-            nn.BatchNorm1d(dec_ch[1], momentum=0.1),
-            nn.ReLU(),
-        )
-        self.cls3 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[1], 2, kernel_size=1, stride=2, padding=0, indice_key="subm3d"), 
-        )
-        self.Decoder2 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[1], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm_2"), 
-            nn.BatchNorm1d(dec_ch[0], momentum=0.1),
-            nn.ReLU(),
-            spconv.SubMConv4d(dec_ch[0], dec_ch[0], kernel_size=3, stride=1, padding=1, indice_key="subm_2"), 
-            nn.BatchNorm1d(dec_ch[0], momentum=0.1),
-            nn.ReLU(),
-            spconv.SparseConvTranspose4d(dec_ch[0], dec_ch[0], kernel_size=(4, 4, 4, 1), stride=(2, 2, 2, 1), padding = (1, 1, 1, 0)),
-            nn.BatchNorm1d(dec_ch[0], momentum=0.1),
-            nn.ReLU()
-        )
-        self.cls2 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[0], 2, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
-        )
+        self.Decoder5 = SparseDecoder(dec_ch[4], dec_ch[3], (3, 3, 3, 1), indice_key="subm_5")
+        self.Decoder4 = SparseDecoder(dec_ch[3], dec_ch[2], (3, 4, 4, 1), indice_key="subm_4")
+        self.Decoder3 = SparseDecoder(dec_ch[2], dec_ch[1], (3, 4, 4, 1), indice_key="subm_3")
+        self.Decoder2 = SparseDecoder(dec_ch[1], dec_ch[0], (4, 4, 4, 1), indice_key="subm_2")
         self.Decoder1 = spconv.SparseSequential(
             spconv.SubMConv4d(dec_ch[0], 3*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm_1"),
             nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
             nn.ReLU()
         )
-        self.conv1 = nn.Sequential(
-            nn.Conv3d(16, 8, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm3d(8))
-        self.conv2 = nn.Sequential(
-            nn.Conv3d(8, 4, kernel_size=(5, 3, 3), padding=(2, 1, 1)),
-            nn.ReLU(),
-            nn.BatchNorm3d(4))
-        self.conv3 = nn.Sequential(
-            nn.Conv3d(4, 1, kernel_size=(7, 5, 5), padding=(3, 2, 2)),
-            nn.ReLU(),
-            nn.BatchNorm3d(1))
+
         # self.Linear = nn.Linear(dec_ch[0], 1)
         self.conv = nn.Conv3d(in_channels=16, out_channels=1, kernel_size=1)
     def forward(self, sparse_tensor):
@@ -165,68 +103,38 @@ class PointCloud3DCNN(nn.Module):
         enc_2 = self.Encoder3(enc_1)
         enc_3 = self.Encoder4(enc_2)
         enc_4 = self.Encoder5(enc_3)
-        
-        # enc_4_dense = enc_4.dense()
-        # enc_4 = enc_4_dense[...,0] + enc_4_dense[...,1]
-        # print(enc_4.shape)
-        # sparse = spconv.SparseConvTensor.from_dense(enc_4.permute(0, 2, 3, 4, 1))
-        dec_3 = self.Decoder5(enc_4)
-        feat_cls5 = self.cls5(dec_3) # 7 x 15 x 15
-        pred_prob = F.softmax(feat_cls5.features, 1)[:, 1]
-        cm_, pred_prob = self.cls_postprocess(feat_cls5.indices, pred_prob)
-        probs.append(pred_prob)
-        cm.append(cm_)
-        # print(dec_3.features.shape)
-        # print(enc_3.features.shape)
 
-        dec_3 = Fsp.sparse_add(dec_3, enc_3)
-        # dec_3 = dec_3 + enc_3
-        dec_2 = self.Decoder4(dec_3) # 13 x 30 x 30
-        feat_cls4 = self.cls4(dec_2)
-        pred_prob = F.softmax(feat_cls4.features, 1)[:, 1]
-        cm_, pred_prob = self.cls_postprocess(feat_cls4.indices, pred_prob)
-        probs.append(pred_prob)
-        cm.append(cm_)
-        
-        dec_2 = Fsp.sparse_add(dec_2, enc_2)
-        # dec_2 = dec_2 + enc_2
-        dec_1 = self.Decoder3(dec_2) # 25 x 60 x 60
-        feat_cls3 = self.cls3(dec_1)
-        pred_prob = F.softmax(feat_cls3.features, 1)[:, 1]
-        cm_, pred_prob = self.cls_postprocess(feat_cls3.indices, pred_prob)
+
+
+        out, cm_, pred_prob = self.Decoder5(enc_4)        
         probs.append(pred_prob)
         cm.append(cm_)
 
-        dec_1 = Fsp.sparse_add(dec_1, enc_1)
-        # dec_1 = dec_1 + enc_1
-        dec_0 = self.Decoder2(dec_1) # 50 x 120 x 120
-        feat_cls2 = self.cls2(dec_0)
-        pred_prob = F.softmax(feat_cls2.features, 1)[:, 1]
-        cm_, pred_prob = self.cls_postprocess(feat_cls2.indices, pred_prob)
+        out = Fsp.sparse_add(out, enc_3)
+        out, cm_, pred_prob = self.Decoder4(out)        
         probs.append(pred_prob)
         cm.append(cm_)
         
-        dec_0_dense = dec_0.dense()
-        f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
+        out = Fsp.sparse_add(out, enc_2)
+        out, cm_, pred_prob = self.Decoder3(out)        
+        probs.append(pred_prob)
+        cm.append(cm_)
+
+        out = Fsp.sparse_add(out, enc_1)
+        out, cm_, pred_prob = self.Decoder2(out)        
+        probs.append(pred_prob)
+        cm.append(cm_)
         
-        # batch_size, channels, depth, height, width = f_occu.shape
-        # flat = f_occu.view(batch_size, -1, channels)
-        # occu = self.Linear(flat)
-        # occu = occu.view(batch_size, 1, depth, width, height)
+        out_dense = out.dense()
+        f_occu = out_dense[...,0] + out_dense[...,1] # batch_size, channels, depth, height, width, time
         occu = self.conv(f_occu)
 
-        # sparse = spconv.SparseConvTensor.from_dense(f_occu)
-        # x = self.Conv1(dec_0)
-        # x = self.Conv2(x)
-        # x = self.Conv3(x)
-        # x_dense = x.dense()
-        # occu = x_dense[...,0] + x_dense[...,1]
-        dec_0 = self.Decoder1(dec_0)
-        feat = self.feat_postprocess(dec_0) # batch, n, 12
+        out = self.Decoder1(out)
+        feat = self.feat_postprocess(out) # batch, n, 12
         if feat.requires_grad:
             feat.retain_grad()
         feat = torch.sigmoid(feat)
-        coords = self.indices_postprocess(dec_0) # batch, n, 4
+        coords = self.indices_postprocess(out) # batch, n, 4
         preds = self.postprocess(feat, coords)
         # print(preds.grad_fn)
         
@@ -234,33 +142,6 @@ class PointCloud3DCNN(nn.Module):
             
         return preds, occu, probs, cm, f_occu
     
-    def cls_postprocess(self, feat_indices, pred_prob):
-        batch_indices = feat_indices[:, 0]
-        unique_batches = torch.unique(batch_indices)
-
-        cm_batch = []
-        pred_prob_batch = []
-
-        for b in unique_batches:
-            batch_mask = (batch_indices == b)
-            cm_batch.append(feat_indices[batch_mask, 1:])
-            pred_prob_batch.append(pred_prob[batch_mask].unsqueeze(-1))
-        max_points = max([t.size(0) for t in cm_batch])
-        cm_batch_padded = []
-        pred_prob_batch_padded = []
-
-        for cm, prob in zip(cm_batch, pred_prob_batch):
-            cm_padded = F.pad(cm, (0, 0, 0, max_points - cm.size(0)), value=0)  # [n, 3] -> [max_points, 3]
-            prob_padded = F.pad(prob, (0, 0, 0, max_points - prob.size(0)), value=0)  # [n, 1] -> [max_points, 1]
-            
-            cm_batch_padded.append(cm_padded)
-            pred_prob_batch_padded.append(prob_padded)
-
-        cm_batch = torch.stack(cm_batch_padded)
-        pred_prob_batch = torch.stack(pred_prob_batch_padded)
-
-        return cm_batch, pred_prob_batch
-        
     def feat_postprocess(self, preds):
         import torch.nn.functional as F
 
