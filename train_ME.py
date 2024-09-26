@@ -7,7 +7,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 import numpy as np
 from config import config as cfg
-from data2 import PointCloudDataset
+from data import PointCloudDataset
 import os
 import time
 import argparse
@@ -37,7 +37,7 @@ from open3d.visualization.tensorboard_plugin import summary
 from torch.multiprocessing import Process
 import joblib
 import h5py
-from data2 import GetTarget
+# from data import GetTarget
 import random
 import MinkowskiEngine as ME
 from debug import occupancy_grid_to_coords, tensor_to_ply, save_single_occupancy_grid_as_ply, profileit
@@ -61,7 +61,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 16
+        self.batch_size = 32
         self.device = cfg.device
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size, in_channels=12, out_channels=12, dimension=4, n_depth=4).to(self.device)
@@ -69,7 +69,7 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.h5_file_path = "lidar_data.h5"
+        self.h5_file_path = "lidar_data_64.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -92,13 +92,6 @@ class Train():
         self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
         self.input_shape = (50, 120, 120, 2)
         
-        self.train_target_dir = "train_"
-        self.train_get_target = GetTarget(self.train_target_dir)
-        self.valid_target_dir = "valid_"
-        self.valid_get_target = GetTarget(self.valid_target_dir)
-        self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-        self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-
         self.teacher_forcing_ratio = 1.0
         self.decay_rate = 0.01
         torch.backends.cudnn.benchmark = True
@@ -139,17 +132,6 @@ class Train():
         for epoch in range(start_epoch, self.epochs):
             train_loss, epoch_time = self.train_epoch(epoch)
             writer2.add_scalar("Loss/train", train_loss, epoch)
-            # val_loss = self.validation_epoch(epoch)
-            # writer2.add_scalar("Loss/valid", val_loss, epoch)
-
-            if len(self.train_taget_loader) != len(self.train_loader):
-                print("Regenerate train loader")
-                self.train_get_target = GetTarget(self.train_target_dir)
-                self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-            # if len(self.val_taget_loader) != len(self.val_loader):
-            #     print("Regenerate valid loader")
-            #     self.valid_get_target = GetTarget(self.valid_target_dir)
-            #     self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
             if (epoch+1) % 30 == 0:
                 self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)

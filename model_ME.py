@@ -13,7 +13,6 @@ from os.path import join
 from debug import tensor_to_ply
 import MinkowskiEngine as ME
 
-input_shape = (cfg.D, cfg.H, cfg.W)
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]

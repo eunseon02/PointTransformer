@@ -10,8 +10,6 @@ from torch.nn.utils.rnn import pad_sequence
 import pickle
 import joblib
 import h5py
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-
 
 class PointCloudDataset(Dataset):
     def __init__(self, filename, batch, split='train'):
