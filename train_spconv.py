@@ -100,7 +100,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 5
+        self.batch_size = 32
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -191,8 +191,8 @@ class Train():
             # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
             # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
             # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
-            val_loss = self.validation_epoch(epoch)
-            writer2.add_scalar("Loss/valid", val_loss, epoch)
+            # val_loss = self.validation_epoch(epoch)
+            # writer2.add_scalar("Loss/valid", val_loss, epoch)
             
 
             if len(self.train_taget_loader) != len(self.train_loader):
@@ -213,7 +213,7 @@ class Train():
                 if train_loss < best_loss:
                     best_loss = train_loss
                     self._snapshot('best_{}'.format(epoch))
-            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
+            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Time: {epoch_time:.4f}s"
             self.log(log_message)
         # finish all epoch
         self._snapshot(epoch + 1)
@@ -447,7 +447,7 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
-                print(data_file_path)
+                # print(data_file_path)
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
@@ -524,7 +524,7 @@ class Train():
                 if iter == 40:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
-                    # self.tensorboard_launcher(occupancy_grid_to_coords(decoding[...,0]), epoch, [1.0, 0.0, 0.0], "decoding0", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
                     # self.tensorboard_launcher(occupancy_grid_to_coords(decoding[...,1]), epoch, [0.0, 0.0, 1.0], "decoding1", writer)
                     # self.tensorboard_launcher(occupancy_grid_to_coords(decoding[...,0] + decoding[...,1]), epoch, [0.0, 0.0, 1.0], "decoding", writer)
                     # self.tensorboard_launcher(occupancy_grid_to_coords_(decoding[...,0] + decoding[...,1], 1), epoch, [0.0, 0.0, 1.0], "decoding_1", writer)
