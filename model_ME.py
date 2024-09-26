@@ -192,7 +192,7 @@ class PointCloud3DCNN(nn.Module):
         dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
 
         decoding = self.conv(dense_tensor[0].squeeze(-1)) # torch.Size([2, 1, 56, 120, 120])
-        # print(decoding.shape)
+        print(decoding.shape)
         # print(preds.shape)
         
         return preds, classifications, targets, decoding
