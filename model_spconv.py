@@ -137,29 +137,30 @@ class PointCloud3DCNN(nn.Module):
             nn.ReLU()
         )
         self.Decoder1 = spconv.SparseSequential(
-            spconv.SubMConv4d(dec_ch[0], 1, kernel_size=3, stride=1, indice_key="subm1"),
-            # nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
-            nn.BatchNorm1d(1, momentum=0.1),
+            spconv.SubMConv4d(dec_ch[0],3*self.max_num_points_per_voxel, kernel_size=3, stride=1, indice_key="subm1"),
+            nn.BatchNorm1d(3*self.max_num_points_per_voxel, momentum=0.1),
+            # nn.BatchNorm1d(1, momentum=0.1),
 
             nn.ReLU()
         )
         self.cls2 = spconv.SparseSequential(
             spconv.SubMConv4d(dec_ch[0], 2, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
-        self.conv1 = nn.Sequential(
-            nn.Conv3d(3*self.max_num_points_per_voxel, 8, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm3d(8))
-        self.conv2 = nn.Sequential(
-            nn.Conv3d(8, 4, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.BatchNorm3d(4))
-        self.conv3 = nn.Sequential(
-            nn.Conv3d(4, 1, kernel_size=7, padding=3),
-            nn.ReLU(),
-            nn.BatchNorm3d(1))
+        # self.conv1 = nn.Sequential(
+        #     nn.Conv3d(3*self.max_num_points_per_voxel, 8, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.BatchNorm3d(8))
+        # self.conv2 = nn.Sequential(
+        #     nn.Conv3d(8, 4, kernel_size=5, padding=2),
+        #     nn.ReLU(),
+        #     nn.BatchNorm3d(4))
+        # self.conv3 = nn.Sequential(
+        #     nn.Conv3d(4, 1, kernel_size=7, padding=3),
+        #     nn.ReLU(),
+        #     nn.BatchNorm3d(1))
         # self.conv1d = nn.Conv1d(in_channels=dec_ch[0], out_channels=dec_ch[0], kernel_size=2, stride=1)
         # self.dense = spconv.ToDense()
+        self.conv = nn.Conv3d(in_channels=3*self.max_num_points_per_voxel, out_channels=1, kernel_size=1)
 
     def forward(self, sparse_tensor):
         probs = []
@@ -204,15 +205,15 @@ class PointCloud3DCNN(nn.Module):
         
         dec_0 = self.Decoder1(dec_0)
         dec_0_dense = dec_0.dense()  # batch_size, channels, depth, height, width, time
-        occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
+        f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
         # occu = self.conv1(f_occu)
         # occu = self.conv2(occu)
         # occu = self.conv3(occu) # batch_size, channels, depth, height, width
         # occu = torch.tanh(occu) # batch, 1, D, W, H
         
-        preds = self.get_pointcloud(occu)
+        preds = self.get_pointcloud(f_occu)
         
-        
+        occu = self.conv(f_occu)
 
         
         # feat = self.feat_postprocess(dec_0) # batch, n, 12
@@ -225,7 +226,7 @@ class PointCloud3DCNN(nn.Module):
         
         # preds = preds.view(self.batch_size, -1, 3)
             
-        return preds, occu, probs, cm, dec_0_dense
+        return preds, occu, probs, cm, f_occu
     
     def get_pointcloud(self, dense_tensor):
         batch_size, channels, depth, height, width = dense_tensor.shape
