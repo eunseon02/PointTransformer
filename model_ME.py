@@ -156,7 +156,7 @@ class PointCloud3DCNN(nn.Module):
         for layer_idx in reversed(range(num_layers)):
             conv_feat_layer = self.get_layer('conv_feat', layer_idx)
             conv_occu_layer = self.get_layer('occu', layer_idx)
-            conv_up_layer = self.get_layer('Decoder', layer_idx)
+            dec = self.get_layer('Decoder', layer_idx)
             
             curr_feat = enc_feat[layer_idx]
 
@@ -169,11 +169,11 @@ class PointCloud3DCNN(nn.Module):
             # print(pred_prob)
             
             target = self.get_target(curr_feat, target_key)
-            keep = (pred_prob > 0.5).squeeze() 
+            keep = (pred_prob > 0.9).squeeze() 
             keep += target
             if torch.any(keep):
                 # Prune and upsample
-                pyramid_output = conv_up_layer(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
+                pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
                 # Generate final feature for current level
                 final_pruned = self.pruning(feat, keep)
             else:

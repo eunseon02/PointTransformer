@@ -1,0 +1,12 @@
+Epoch [1/300] - Train Loss: 0.4746, Time: 1927.6469s
+Epoch [2/300] - Train Loss: 0.4756, Time: 2032.1382s
+Epoch [1/300] - Train Loss: 0.4600, Time: 1766.9306s
+Epoch [2/300] - Train Loss: 0.4603, Time: 1736.0526s
+Epoch [3/300] - Train Loss: 0.4607, Time: 1759.5313s
+Epoch [1/300] - Train Loss: 0.4595, Time: 115.3201s
+Epoch [2/300] - Train Loss: 0.4593, Time: 125.8619s
+Epoch [3/300] - Train Loss: 0.4598, Time: 112.7314s
+Epoch [4/300] - Train Loss: 0.4601, Time: 121.2976s
+Epoch [5/300] - Train Loss: 0.4603, Time: 115.2269s
+Epoch [6/300] - Train Loss: 0.4603, Time: 118.4901s
+Epoch [7/300] - Train Loss: 0.4610, Time: 121.6272s
