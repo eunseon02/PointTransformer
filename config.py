@@ -1,5 +1,7 @@
 import math
 import torch
+from os.path import join
+from torch.utils.tensorboard import SummaryWriter
 
 class config:
     
@@ -29,6 +31,9 @@ class config:
 
     ## train
     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-
-
-
+    BASE_LOGDIR = "./train_logs6" 
+    writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
+    file = "lidar_data_64.h5"
+    weight = "weight6"
+    log = 'train_log6.txt'
+    

@@ -175,7 +175,7 @@ class PointCloud3DCNN(nn.Module):
                 # Prune and upsample
                 pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
                 # Generate final feature for current level
-                final_pruned = self.pruning(feat, keep)
+                final_pruned = self.pruning(curr_feat, keep)
             else:
                 pyramid_output = None
                 final_pruned = None

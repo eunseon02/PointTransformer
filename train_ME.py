@@ -42,8 +42,7 @@ import random
 import MinkowskiEngine as ME
 from debug import occupancy_grid_to_coords, tensor_to_ply, profileit
 
-BASE_LOGDIR = "./train_logs6" 
-writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
+writer = cfg.writer
 
 def pad_or_trim_cloud(pc, target_size=3000):
     n = pc.size(0)
@@ -67,7 +66,7 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.h5_file_path = "lidar_data_64.h5"
+        self.h5_file_path = cfg.file
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -79,8 +78,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight6"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log6.txt'
+        self.weight_folder = cfg.weight
+        self.log_file = args.log_file if hasattr(args, 'log_file') else cfg.log
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
         self.max_coord_range_zyx = torch.tensor([1.5, 3.0, 3.0])
@@ -445,14 +444,24 @@ class Train():
 
                 # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-
+                self.tensorboard_launcher(occupancy_grid_to_coords(out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", writer)
+                self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", writer)
+                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 1.0, 1.0], "GT-iter", writer)
                 if iter == 1:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
                 
-                loss = self.criterion(occu, gt_occu, preds, gt_pts)
+                loss, check = self.criterion(occu, gt_occu, preds, gt_pts)
+                if iter == 1:
+                    writer.add_scalar("Loss/5 x 15 x 15", check[0], epoch)
+                    writer.add_scalar("Loss/10 x 30 x 30", check[1], epoch)
+                    writer.add_scalar("Loss/20 x 60 x 60", check[2], epoch)
+                    writer.add_scalar("Loss/50 x 120 x 120", check[3], epoch)
+
+                    
+                    
                 loss.backward()
 
                 # for name, param in self.model.named_parameters():
