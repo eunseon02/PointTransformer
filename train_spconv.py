@@ -40,7 +40,7 @@ import h5py
 from data2 import GetTarget
 import random
 
-BASE_LOGDIR = "./train_logs8" 
+BASE_LOGDIR = "./train_logs9" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
@@ -129,8 +129,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight8"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log8.txt'
+        self.weight_folder = "weight9"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log9.txt'
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
@@ -200,10 +200,6 @@ class Train():
                 self.train_get_target = GetTarget(self.train_target_dir)
                 self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
                 # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-            if len(self.val_taget_loader) != len(self.val_loader):
-                print("Regenerate valid loader")
-                self.valid_get_target = GetTarget(self.valid_target_dir)
-                self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
             if (epoch+1) % 20 == 0:
                 self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
@@ -512,7 +508,7 @@ class Train():
                 preds, occu, probs, cm, decoding = self.model(sptensor)
                 if preds.size(1)==0:
                     print("no pred points")
-                # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
+                self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
     
                 ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
@@ -740,7 +736,7 @@ class Train():
                 name = key
             new_state_dict[name] = val
         # Load the state dictionary into the model
-        self.model.load_state_dict(new_state_dict)
+        self.model.load_state_dict(new_state_dict, strict=False)
         print(f"Model loaded from {pretrain}")
         
     def log(self, message):

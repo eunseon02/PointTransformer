@@ -11,7 +11,7 @@ from config import config as cfg
 import cumm
 import torch.nn.functional as F
 from os.path import join
-
+from res import ResidualBlock
 
 input_shape = (cfg.D, cfg.H, cfg.W)
 
@@ -146,6 +146,10 @@ class PointCloud3DCNN(nn.Module):
         self.cls2 = spconv.SparseSequential(
             spconv.SubMConv4d(dec_ch[0], 2, kernel_size=1, stride=2, padding=0, indice_key="subm2d"), 
         )
+        self.res_block1 = ResidualBlock(in_channels=9, out_channels=6)
+        self.res_block2 = ResidualBlock(in_channels=6, out_channels=3)
+        self.res_block3 = ResidualBlock(in_channels=3, out_channels=1)
+
         # self.conv1 = nn.Sequential(
         #     nn.Conv3d(3*self.max_num_points_per_voxel, 8, kernel_size=3, padding=1),
         #     nn.ReLU(),
@@ -210,11 +214,19 @@ class PointCloud3DCNN(nn.Module):
         # occu = self.conv2(occu)
         # occu = self.conv3(occu) # batch_size, channels, depth, height, width
         # occu = torch.tanh(occu) # batch, 1, D, W, H
-        
+        occu, _ = torch.max(f_occu, dim=1, keepdim=True)
+
         preds = self.get_pointcloud(f_occu)
         
-        occu = self.conv(f_occu)
+        
+        # occu = self.res_block1(f_occu)
+        # occu = self.res_block2(occu)
+        # occu = self.res_block3(occu)
 
+        # occu = self.conv(f_occu)
+        # print(f_occu.shape)
+        # occu = f_occu[:, 0, :, :, :] + f_occu[:, 1, :, :, :] + f_occu[:, 2, :, :, :]
+        # occu = occu.unsqueeze(1)
         
         # feat = self.feat_postprocess(dec_0) # batch, n, 12
         # if feat.requires_grad:
