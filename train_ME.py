@@ -42,7 +42,7 @@ import random
 import MinkowskiEngine as ME
 from debug import occupancy_grid_to_coords, tensor_to_ply, profileit
 
-BASE_LOGDIR = "./train_logs7" 
+BASE_LOGDIR = "./train_logs3" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 
 def pad_or_trim_cloud(pc, target_size=3000):
@@ -58,8 +58,8 @@ def pad_or_trim_cloud(pc, target_size=3000):
 class Train():
     def __init__(self, args):
         self.epochs = 300
-        self.snapshot_interval = 10
-        self.batch_size = 2
+        self.snapshot_interval = 32
+        self.batch_size = 32
         self.device = cfg.device
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size, in_channels=12, out_channels=12, dimension=4, n_depth=4).to(self.device)
@@ -67,7 +67,7 @@ class Train():
         if self.model_path != '':
             self._load_pretrain(args.model_path)
         
-        self.h5_file_path = "lidar_data.h5"
+        self.h5_file_path = "lidar_data_64.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -79,8 +79,8 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight7"
-        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log7.txt'
+        self.weight_folder = "weight3"
+        self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log3.txt'
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
         self.max_coord_range_zyx = torch.tensor([1.5, 3.0, 3.0])
@@ -443,11 +443,11 @@ class Train():
                     
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts) # batch x channel x D x W x H xt
-                gt_occu,indices= self.occupancy_grid_(gt_pts) # batch x channel x D x W x H
+                gt_occu_,indices= self.occupancy_grid_(gt_pts) # batch x channel x D x W x H
 
                 # print(sptensor.dense()[0].shape)
-                self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[0][:, :, :, :, :, 0]), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()[0]), iter, [0.0, 0.0, 1.0], "gt_iter", writer)
+                # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[0][:, :, :, :, :, 0]), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+                # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()[0]), iter, [0.0, 0.0, 1.0], "gt_iter", writer)
                 
                 cm = sptensor.coordinate_manager
                 zeros = torch.zeros((indices.size(0), 1), device=pts.device)
@@ -477,6 +477,10 @@ class Train():
                     # min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
                     # dense_tensor = out.dense(min_coordinate=min_coord)
                     self.tensorboard_launcher(occupancy_grid_to_coords(out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
+
+
                 #     self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
                 #     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
                 #     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), epoch, [0.0, 1.0, 1.0], "pts_train", writer)

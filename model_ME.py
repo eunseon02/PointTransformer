@@ -166,9 +166,11 @@ class PointCloud3DCNN(nn.Module):
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
             pred_prob = torch.sigmoid(pred_occu.F)
+            # print(pred_prob)
             
             target = self.get_target(curr_feat, target_key)
-            keep = (pred_prob > 0.5).squeeze()
+            keep = (pred_prob > 0.5).squeeze() 
+            keep += target
             if torch.any(keep):
                 # Prune and upsample
                 pyramid_output = conv_up_layer(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
@@ -190,12 +192,13 @@ class PointCloud3DCNN(nn.Module):
         
         min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
         dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
+        # print(dense_tensor[0].squeeze(-1))
 
         decoding = self.conv(dense_tensor[0].squeeze(-1)) # torch.Size([2, 1, 56, 120, 120])
-        print(decoding.shape)
+        # print(decoding.shape)
         # print(preds.shape)
         
-        return preds, classifications, targets, decoding
+        return preds, classifications, targets, dense_tensor[0].squeeze(-1)
     
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx+1}'
