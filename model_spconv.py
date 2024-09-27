@@ -116,7 +116,7 @@ class PointCloud3DCNN(nn.Module):
         cm.append(cm_)
         
         out = Fsp.sparse_add(out, enc_2)
-        out, cm_, pred_prob = self.Decoder3(out)        
+        out, cm_, pred_prob = self.Decoder3(out)
         probs.append(pred_prob)
         cm.append(cm_)
 

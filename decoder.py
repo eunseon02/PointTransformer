@@ -34,15 +34,19 @@ class SparseDecoder(spconv.SparseModule):
 
         # pred_prob = F.softmax(mask.features, 1)[:, 1]
         pred_prob = torch.sigmoid(mask.features)
-        cm_, pred_prob = self.cls_postprocess(mask.indices, pred_prob)
+        cm_, pred_prob_ = self.cls_postprocess(mask.indices, pred_prob)
+            
+        occu = pred_prob > 0.5
+        ind = mask.indices
+        ind = ind[occu.squeeze()]
 
-        selected_features = out.features * mask.features
-        selected_indices = out.indices
+        selected_features = out.features * occu
+        selected_indices = ind
 
         out = out.replace_feature(selected_features)
         out.indices = selected_indices
 
-        return out, cm_, pred_prob
+        return out, cm_, pred_prob_
     
     
     def cls_postprocess(self, feat_indices, pred_prob):

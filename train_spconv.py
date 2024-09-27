@@ -153,7 +153,7 @@ class Train():
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
         if num_points == 0:
-            print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
+            print(f"Warning: num_points is 0 - {tag}")
             # return
         else:
             writer.add_3d(
@@ -413,6 +413,7 @@ class Train():
         x_indices = cm[:, :, 0].to(occupancy_grid.device)
         y_indices = cm[:, :, 1].to(occupancy_grid.device)
         z_indices = cm[:, :, 2].to(occupancy_grid.device)
+        # print(x_indices, y_indices)
 
         X, Y, Z = occupancy_grid.shape[2], occupancy_grid.shape[3], occupancy_grid.shape[4]
 
@@ -523,20 +524,20 @@ class Train():
                 gt_probs = []
                 for idx in range(len(probs)):
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
-                    mask = gt_prob[0] == 1
-                    occu_= cm[idx][0,mask, :3]
-                    self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm_iter", writer3)
-                    mask = probs[idx][0].squeeze(-1) == 1                    
-                    occu_= cm[idx][0,mask, :3]
-                    self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob_iter", writer3)
-                    del occu_
+                    # mask = gt_prob[0] == 1
+                    # occu_= cm[idx][0,mask, :3]
+                    # self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm_iter", writer3)
+                    # mask = probs[idx][0].squeeze(-1) == 1                    
+                    # occu_= cm[idx][0,mask, :3]
+                    # self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob_iter", writer3)
+                    # del occu_
                 
                     ## for debugging
                     if idx ==2 and iter == 40:
                         mask = gt_prob[0] == 1
                         occu_= cm[idx][0,mask, :3]
                         self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm", writer3)
-                        mask = probs[idx][0].squeeze(-1) == 1                    
+                        mask = probs[idx][0].squeeze(-1) >= 0.5                    
                         occu_= cm[idx][0,mask, :3]
                         self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
                         del occu_
