@@ -1,4 +1,10 @@
 import torch
+from torch.utils.tensorboard import SummaryWriter
+from open3d.visualization.tensorboard_plugin import summary
+from config import config as cfg
+
+writer = cfg.writer
+
 def tensor_to_ply(tensor, filename):
     # print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
@@ -27,3 +33,24 @@ def profileit(func):
         return retval
 
     return wrapper
+
+
+
+
+def tensorboard_launcher(points, step, color, tag):
+    # points = occupancy_grid_to_coords(points)
+    num_points = points.shape[0]
+    colors = torch.tensor(color).repeat(num_points, 1)
+    if num_points == 0:
+        print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
+        # return
+    else:
+        writer.add_3d(
+        tag,
+        {
+            "vertex_positions": points.float(), # (N, 3)
+            "vertex_colors": colors.float()  # (N, 3)
+        },
+        step)
+    del points, colors
+    torch.cuda.empty_cache()

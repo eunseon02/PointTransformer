@@ -30,10 +30,11 @@ class config:
     dimension = 3
 
     ## train
+    batch_size = 2
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    BASE_LOGDIR = "./train_logs6" 
+    BASE_LOGDIR = "./train_logs8" 
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
-    file = "lidar_data_32_full.h5"
-    weight = "weight6"
-    log = 'train_log6.txt'
+    file = "lidar_data.h5"
+    weight = "weight8"
+    log = 'train_log8.txt'
     

@@ -10,7 +10,7 @@ from config import config as cfg
 import cumm
 import torch.nn.functional as F
 from os.path import join
-from debug import tensor_to_ply
+from debug import tensor_to_ply,tensorboard_launcher
 import MinkowskiEngine as ME
 
 class PointCloud3DCNN(nn.Module):
@@ -131,13 +131,15 @@ class PointCloud3DCNN(nn.Module):
         self.conv = nn.Conv3d(in_channels=12, out_channels=1, kernel_size=1)
         self.weight_initialization()
         
-    def get_target(self, out, target_key, kernel_size=1):
+    def get_target(self, out, target_key, iter, num_layers, kernel_size=1):
         with torch.no_grad():
             target = torch.zeros(len(out), dtype=torch.bool, device=out.device)
             cm = out.coordinate_manager
             strided_target_key = cm.stride(
                 target_key, out.tensor_stride[0],
             )
+            tensorboard_launcher(cm.get_coordinates(strided_target_key)[:,1:4], iter, [1.0, 0, 0], f"target_{num_layers}")
+
             kernel_map = cm.kernel_map(
                 out.coordinate_map_key,
                 strided_target_key,
@@ -164,7 +166,7 @@ class PointCloud3DCNN(nn.Module):
 
         return enc_feat
         
-    def forward(self, sparse_tensor, target_key, is_train):
+    def forward(self, sparse_tensor, target_key, is_train, iter):
         probs = []
         enc_feat = self.encode(sparse_tensor)
         pyramid_output = None
@@ -186,12 +188,14 @@ class PointCloud3DCNN(nn.Module):
                 curr_feat = curr_feat + pyramid_output 
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
+            # print(pred_occu.F)
             pred_prob = torch.sigmoid(pred_occu.F)
             # print(pred_prob)
             
-            target = self.get_target(curr_feat, target_key)
-            keep = (pred_prob > 0.9).squeeze() 
-            keep += target
+            target = self.get_target(curr_feat, target_key, iter, layer_idx)
+            # keep = (pred_prob > 0.9).squeeze() 
+            # print(pred_prob.shape, keep.shape)
+            keep = target
             if torch.any(keep):
                 # Prune and upsample
                 pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])

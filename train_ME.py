@@ -57,8 +57,8 @@ def pad_or_trim_cloud(pc, target_size=3000):
 class Train():
     def __init__(self, args):
         self.epochs = 300
-        self.snapshot_interval = 32
-        self.batch_size = 32
+        self.snapshot_interval = 10
+        self.batch_size = cfg.batch_size
         self.device = cfg.device
         torch.cuda.set_device(self.device)
         self.model = PointCloud3DCNN(self.batch_size, in_channels=12, out_channels=12, dimension=4, n_depth=4).to(self.device)
@@ -440,7 +440,7 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out = self.model(sptensor, target_key, True)
+                preds, occu, gt_occu, out = self.model(sptensor, target_key, True, iter)
                 # self.tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
