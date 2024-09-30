@@ -51,7 +51,21 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiBatchNorm(enc_ch[3]),
             ME.MinkowskiReLU()
         )
+        self.Encoder5 = nn.Sequential(
+            ME.MinkowskiConvolution(in_channels=enc_ch[3], out_channels=enc_ch[4], kernel_size=3, stride=2, dimension=self.D),
+            ME.MinkowskiBatchNorm(enc_ch[4]),
+            ME.MinkowskiReLU()
+        )
         
+
+        self.Decoder5 = nn.Sequential(
+            ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[4], out_channels=dec_ch[3], kernel_size=(3, 3, 3, 1), stride=2, dimension=self.D),
+            ME.MinkowskiBatchNorm(dec_ch[3]),
+            ME.MinkowskiReLU()
+        )
+        self.occu5 = nn.Sequential(
+            ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+        )
 
         self.Decoder4 = nn.Sequential(
             ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[3], out_channels=dec_ch[2], kernel_size=(3, 3, 3, 1), stride=2, dimension=self.D),
@@ -140,6 +154,8 @@ class PointCloud3DCNN(nn.Module):
         enc_feat.append(enc_2)
         enc_3 = self.Encoder4(enc_2) # 3 x 8 x 8
         enc_feat.append(enc_3)
+        enc_4 = self.Encoder4(enc_3) 
+        enc_feat.append(enc_4)
 
         return enc_feat
         
