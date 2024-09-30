@@ -127,11 +127,13 @@ class Train():
 
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
+            if self.teacher_forcing_ratio != 1.0:
+                raise ValueError("not teachers forcing")
             train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
 
-            if (epoch+1) % 30 == 0:
-                self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
+            # if (epoch+1) % 30 == 0:
+            #     self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -423,11 +425,11 @@ class Train():
                     
                 pts = torch.nan_to_num(pts, nan=0.0)
                 sptensor = self.preprocess(pts) # batch x channel x D x W x H xt
-                gt_occu_,indices= self.occupancy_grid_(gt_pts) # batch x channel x D x W x H
+                gt_occu_, indices= self.occupancy_grid_(gt_pts) # batch x channel x D x W x H
 
                 # print(sptensor.dense()[0].shape)
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[0][:, :, :, :, :, 0]), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-                # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()[0]), iter, [0.0, 0.0, 1.0], "gt_iter", writer)
+                # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "gt_iter", writer)
                 
                 cm = sptensor.coordinate_manager
                 zeros = torch.zeros((indices.size(0), 1), device=pts.device)
@@ -452,7 +454,7 @@ class Train():
                     self.tensorboard_launcher(occupancy_grid_to_coords(out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
-                
+
                 loss, check = self.criterion(occu, gt_occu, preds, gt_pts)
                 if iter == 1:
                     writer.add_scalar("Loss/5 x 15 x 15", check[0], epoch)

@@ -101,7 +101,11 @@ class PointCloud3DCNN(nn.Module):
         self.occu1 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
         )
-        
+        self.conv_feat5 = nn.Sequential(
+            ME.MinkowskiConvolution(in_channels=dec_ch[4], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(self.upsample_feat_size),
+            ME.MinkowskiReLU()
+        )        
 
         self.conv_feat4 = nn.Sequential(
             ME.MinkowskiConvolution(in_channels=dec_ch[3], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
@@ -154,7 +158,8 @@ class PointCloud3DCNN(nn.Module):
         enc_feat.append(enc_2)
         enc_3 = self.Encoder4(enc_2) # 3 x 8 x 8
         enc_feat.append(enc_3)
-        enc_4 = self.Encoder4(enc_3) 
+        # print(enc_3.dense()[0].shape)
+        enc_4 = self.Encoder5(enc_3) 
         enc_feat.append(enc_4)
 
         return enc_feat
