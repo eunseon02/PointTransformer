@@ -1,0 +1,17 @@
+Epoch [1/300] - Train Loss: 0.7952, Time: 842.6475s
+Epoch [2/300] - Train Loss: 0.7801, Time: 459.8374s
+Epoch [3/300] - Train Loss: 0.7783, Time: 465.4913s
+Epoch [4/300] - Train Loss: 0.7774, Time: 455.8053s
+Epoch [5/300] - Train Loss: 0.7769, Time: 477.0589s
+Epoch [6/300] - Train Loss: 0.7765, Time: 468.7432s
+Epoch [7/300] - Train Loss: 0.7762, Time: 464.9963s
+Epoch [8/300] - Train Loss: 0.7764, Time: 455.2942s
+Epoch [9/300] - Train Loss: 0.7758, Time: 459.2011s
+Epoch [10/300] - Train Loss: 0.7755, Time: 480.8063s
+Epoch [11/300] - Train Loss: 0.7754, Time: 461.6142s
+Epoch [12/300] - Train Loss: 0.7752, Time: 453.8027s
+Epoch [13/300] - Train Loss: 0.7751, Time: 447.8025s
+Epoch [14/300] - Train Loss: 0.7750, Time: 441.8046s
+Epoch [15/300] - Train Loss: 0.7750, Time: 465.6986s
+Epoch [16/300] - Train Loss: 0.7748, Time: 460.9901s
+Epoch [17/300] - Train Loss: 0.7748, Time: 463.8066s

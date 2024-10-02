@@ -211,7 +211,7 @@ class PointCloud3DCNN(nn.Module):
         
         preds = preds.view(self.batch_size, -1, 3)
             
-        return preds, occu, probs, cm
+        return preds, occu, probs, cm, dec_0_dense[...,0]+ dec_0_dense[...,1]
     
     def cls_postprocess(self, feat_indices, pred_prob):
         batch_indices = feat_indices[:, 0]

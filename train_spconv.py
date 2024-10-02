@@ -95,7 +95,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 600
         self.snapshot_interval = 10
-        self.batch_size = 20
+        self.batch_size = 8
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -105,7 +105,7 @@ class Train():
             self._load_pretrain(args.model_path)
         
 
-        self.h5_file_path = "lidar_data_64.h5"
+        self.h5_file_path = "lidar_data_32_full.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -184,18 +184,18 @@ class Train():
             # writer.add_scalar("Loss/cham_loss", cham_loss, epoch)
             # writer.add_scalar("Loss/occu_loss", occu_loss, epoch)
             # writer.add_scalar("Loss/cls_losses", cls_losses, epoch)
-            val_loss = self.validation_epoch(epoch)
-            writer2.add_scalar("Loss/valid", val_loss, epoch)
+            # val_loss = self.validation_epoch(epoch)
+            # writer2.add_scalar("Loss/valid", val_loss, epoch)
 
             if len(self.train_taget_loader) != len(self.train_loader):
                 print("Regenerate train loader")
                 self.train_get_target = GetTarget(self.train_target_dir)
                 self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
                 # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-            if len(self.val_taget_loader) != len(self.val_loader):
-                print("Regenerate valid loader")
-                self.valid_get_target = GetTarget(self.valid_target_dir)
-                self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+            # if len(self.val_taget_loader) != len(self.val_loader):
+            #     print("Regenerate valid loader")
+            #     self.valid_get_target = GetTarget(self.valid_target_dir)
+            #     self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
             
             # save snapeshot
@@ -204,7 +204,7 @@ class Train():
                 if train_loss < best_loss:
                     best_loss = train_loss
                     self._snapshot('best_{}'.format(epoch))
-            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time: {epoch_time:.4f}s"
+            log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Time: {epoch_time:.4f}s"
             self.log(log_message)
         # finish all epoch
         self._snapshot(epoch + 1)
@@ -492,7 +492,7 @@ class Train():
                 gt_occu = self.occupancy_grid_(gt_pts)
 
                 self.optimizer.zero_grad()
-                preds, occu, probs, cm = self.model(sptensor)
+                preds, occu, probs, cm, decoding = self.model(sptensor)
                 # self.tensorboard_launcher(preds[0].float(), iter, [1.0, 0.0, 1.0], "preds")
     
                 ## check preprocess & occupancy grid
@@ -505,6 +505,8 @@ class Train():
                 if iter == 40:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(occu), epoch, [1.0, 0.0, 0.0], "Reconstrunction_train", writer)
+                    self.tensorboard_launcher(occupancy_grid_to_coords(decoding), epoch, [1.0, 0.0, 0.0], "decoding", writer)
+
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), epoch, [0.0, 0.0, 1.0], "GT_train", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), epoch, [0.0, 1.0, 1.0], "pts_train", writer)
                     self.tensorboard_launcher(preds[0].float(), epoch, [1.0, 0.0, 0.0], "preds", writer2)
@@ -515,11 +517,20 @@ class Train():
                 gt_probs = []
                 for idx in range(len(probs)):
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
+                    if idx ==2:
+                        mask = gt_prob[0] == 1
+                        occu_= cm[idx][0,mask, :3]
+                        self.tensorboard_launcher(occu_, iter, [0.0, 0.0, 1.0], "cm-iter", writer3)
+                        mask = probs[idx][0].squeeze(-1) >=0.5
+                        occu_= cm[idx][0,mask, :3]
+                        self.tensorboard_launcher(occu_, iter, [1.0, 0.0, 0.0], "prob-iter", writer3)
+
+                    
                     if idx ==2 and iter == 40:
                         mask = gt_prob[0] == 1
                         occu_= cm[idx][0,mask, :3]
                         self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm", writer3)
-                        mask = probs[idx][0].squeeze(-1) == 1                    
+                        mask = probs[idx][0].squeeze(-1)   >= 0.5       
                         occu_= cm[idx][0,mask, :3]
                         self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
 
