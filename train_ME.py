@@ -129,6 +129,7 @@ class Train():
         for epoch in range(start_epoch, self.epochs):
             if self.teacher_forcing_ratio != 1.0:
                 raise ValueError("not teachers forcing")
+            
             train_loss, epoch_time = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
 
@@ -440,7 +441,7 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out = self.model(sptensor, target_key, True, iter)
+                preds, occu, gt_occu, out = self.model(sptensor, target_key, True, iter, epoch)
                 # self.tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
@@ -448,7 +449,7 @@ class Train():
                 # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
                 self.tensorboard_launcher(occupancy_grid_to_coords(out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", writer)
                 self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", writer)
-                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 1.0, 1.0], "GT-iter", writer)
+                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", writer)
                 if iter == 1:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher(occupancy_grid_to_coords(out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)

@@ -40,7 +40,7 @@ class NSLoss(nn.Module):
     def compute_occupancy_loss(self, pred_occu, gt_occu):
         num_depth = len(pred_occu)
         loss = 0
-        weights = torch.tensor([1, 2, 4, 8, 16], dtype=torch.float32)
+        weights = torch.tensor([1, 2, 4, 16, 32], dtype=torch.float32)
         
         check = []
         
