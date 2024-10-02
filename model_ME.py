@@ -198,7 +198,7 @@ class PointCloud3DCNN(nn.Module):
                 curr_feat = curr_feat + pyramid_output 
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
-            pred_prob = torch.sigmoid(pred_occu.F)
+            # pred_prob = torch.sigmoid(pred_occu.F)
             
             ## for debugging
             coords = pred_occu.C
@@ -210,7 +210,7 @@ class PointCloud3DCNN(nn.Module):
 
             
             target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            keep = (pred_prob > 0.5).squeeze() 
+            keep = (pred_occu.F > 0).squeeze() 
             # keep = pred_prob
             # keep = target == 1
             keep += target
@@ -224,8 +224,7 @@ class PointCloud3DCNN(nn.Module):
                 final_pruned = None
                 
             # Post processing
-            print(pred_prob)
-            classifications.insert(0, pred_prob)
+            classifications.insert(0, pred_occu.F)
             targets.insert(0, target)
             outputs.insert(0, final_pruned)
             

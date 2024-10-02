@@ -30,7 +30,7 @@ class config:
     dimension = 3
 
     ## train
-    batch_size = 8
+    batch_size = 32
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = "./train_logs8" 
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
