@@ -65,6 +65,8 @@ class PointCloud3DCNN(nn.Module):
         )
         self.occu5 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+            ME.MinkowskiSigmoid()
+
         )
 
         self.Decoder4 = nn.Sequential(
@@ -74,6 +76,8 @@ class PointCloud3DCNN(nn.Module):
         )
         self.occu4 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+            ME.MinkowskiSigmoid()
+
         )
         self.Decoder3 = nn.Sequential(
             ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[2], out_channels=dec_ch[1], kernel_size=(3, 3, 3, 1), stride=2, expand_coordinates=True, dimension=self.D),
@@ -82,6 +86,8 @@ class PointCloud3DCNN(nn.Module):
         )
         self.occu3 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+            ME.MinkowskiSigmoid()
+
         )
         self.Decoder2 = nn.Sequential(
             ME.MinkowskiConvolutionTranspose(in_channels=dec_ch[1], out_channels=dec_ch[0], kernel_size=(3, 3, 3, 1), stride=2, expand_coordinates=True, dimension=self.D),
@@ -90,6 +96,7 @@ class PointCloud3DCNN(nn.Module):
         )
         self.occu2 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+            ME.MinkowskiSigmoid()
         )
 
         self.Decoder1 = nn.Sequential(
@@ -100,6 +107,8 @@ class PointCloud3DCNN(nn.Module):
         )
         self.occu1 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+            ME.MinkowskiSigmoid()
+
         )
         self.conv_feat5 = nn.Sequential(
             ME.MinkowskiConvolution(in_channels=dec_ch[4], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
@@ -210,7 +219,7 @@ class PointCloud3DCNN(nn.Module):
 
             
             target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            keep = (pred_occu.F > 0).squeeze() 
+            keep = (pred_occu.F > 0.5).squeeze() 
             # keep = pred_prob
             # keep = target == 1
             keep += target
@@ -222,7 +231,7 @@ class PointCloud3DCNN(nn.Module):
             else:
                 pyramid_output = None
                 final_pruned = None
-                
+            
             # Post processing
             classifications.insert(0, pred_occu.F)
             targets.insert(0, target)
