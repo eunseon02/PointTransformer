@@ -40,7 +40,7 @@ import h5py
 from data2 import GetTarget
 import random
 
-BASE_LOGDIR = "./train_logs9" 
+BASE_LOGDIR = "./train_logs12" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
@@ -100,7 +100,7 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
-        self.batch_size = 32
+        self.batch_size = 20
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -110,7 +110,7 @@ class Train():
             self._load_pretrain(args.model_path)
         
 
-        self.h5_file_path = "lidar_data.h5"
+        self.h5_file_path = "lidar_data_32_full.h5"
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
@@ -129,7 +129,7 @@ class Train():
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
-        self.weight_folder = "weight9"
+        self.weight_folder = "weight12"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log9.txt'
         
         
@@ -158,7 +158,7 @@ class Train():
         num_points = points.shape[0]
         colors = torch.tensor(color).repeat(num_points, 1)
         if num_points == 0:
-            print(f"Warning: num_points is 0 at step {step}, skipping add_3d")
+            print(f"Warning: num_points is 0 at {tag}")
             # return
         else:
             writer.add_3d(
@@ -201,7 +201,7 @@ class Train():
                 self.train_taget_loader = torch.utils.data.DataLoader(self.train_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
                 # self.val_taget_loader = torch.utils.data.DataLoader(self.valid_get_target, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
 
-            if (epoch+1) % 20 == 0:
+            if (epoch + 1) % 20 == 0:
                 self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -508,8 +508,10 @@ class Train():
                 preds, occu, probs, cm, decoding = self.model(sptensor)
                 if preds.size(1)==0:
                     print("no pred points")
-                self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
-    
+                if (epoch + 1) % 2 == 0:
+                    self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer = SummaryWriter(join(BASE_LOGDIR,f"{epoch}")))
+                    self.tensorboard_launcher(occupancy_grid_to_coords(decoding), iter, [1.0, 0.0, 0.0], "decoding_iter", writer = SummaryWriter(join(BASE_LOGDIR, f"{epoch}")))
+
                 ## check preprocess & occupancy grid
                 # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[..., 0]), iter, [1.0, 0.0, 0.0], "sptensor")
                 # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu.dense()), iter, [0.0, 0.0, 1.0], "GT_iter")
@@ -545,14 +547,26 @@ class Train():
                 gt_probs = []
                 for idx in range(len(probs)):
                     gt_prob = self.get_target(occupancy_grids[idx].squeeze(0), cm[idx], idx)
-                    if idx ==2 and iter == 40:
+                    if idx ==2:
                         mask = gt_prob[0] == 1
                         occu_= cm[idx][0,mask, :3]
-                        self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm", writer3)
-                        mask = probs[idx][0].squeeze(-1) == 1                    
+                        self.tensorboard_launcher(occu_, iter, [0.0, 0.0, 1.0], "cm-iter", writer3)
+                        mask = probs[idx][0].squeeze(-1) >= 0.5                    
                         occu_= cm[idx][0,mask, :3]
-                        self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
+                        self.tensorboard_launcher(occu_, iter, [1.0, 0.0, 0.0], "prob-iter", writer3)
                         del occu_
+                        if iter == 40:
+                            mask = gt_prob[0] == 1
+                            occu_= cm[idx][0,mask, :3]
+                            self.tensorboard_launcher(occu_, epoch, [0.0, 0.0, 1.0], "cm", writer3)
+                            mask = probs[idx][0].squeeze(-1) >= 0.5
+                            # print(mask)
+                            # print(mask[True])
+                            # print("Probs:", probs[idx][0].squeeze(-1))
+          
+                            occu_= cm[idx][0,mask, :3]
+                            self.tensorboard_launcher(occu_, epoch, [1.0, 0.0, 0.0], "prob", writer3)
+                            del occu_
 
                     gt_probs.append(gt_prob)
                 del gt_prob

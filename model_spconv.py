@@ -207,7 +207,7 @@ class PointCloud3DCNN(nn.Module):
         probs.append(pred_prob)
         cm.append(cm_)
         
-        dec_0 = self.Decoder1(dec_0)
+        # dec_0 = self.Decoder1(dec_0)
         dec_0_dense = dec_0.dense()  # batch_size, channels, depth, height, width, time
         f_occu = dec_0_dense[...,0] + dec_0_dense[...,1] # batch_size, channels, depth, height, width, time
         # occu = self.conv1(f_occu)
