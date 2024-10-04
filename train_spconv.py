@@ -40,10 +40,16 @@ import h5py
 from data2 import GetTarget
 import random
 
+<<<<<<< Updated upstream
 BASE_LOGDIR = "./train_logs12" 
 writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
 writer2 = SummaryWriter(join(BASE_LOGDIR, "pred"))
 writer3 = SummaryWriter(join(BASE_LOGDIR, "prob"))
+=======
+writer = cfg.writer
+writer2 = cfg.writer2
+writer3 = cfg.writer3
+>>>>>>> Stashed changes
 
 def pad_or_trim_cloud(pc, target_size=3000):
     n = pc.size(0)
@@ -100,7 +106,11 @@ class Train():
     def __init__(self, args):
         self.epochs = 300
         self.snapshot_interval = 10
+<<<<<<< Updated upstream
         self.batch_size = 20
+=======
+        self.batch_size = cfg.batch_size
+>>>>>>> Stashed changes
         self.split = 1
         self.device = cfg.device
         torch.cuda.set_device(self.device)
@@ -110,27 +120,30 @@ class Train():
             self._load_pretrain(args.model_path)
         
 
+<<<<<<< Updated upstream
         self.h5_file_path = "lidar_data_32_full.h5"
+=======
+        self.h5_file_path = cfg.file
+>>>>>>> Stashed changes
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
         self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if self.train_dataset.batch_count != self.batch_size:
-            print(self.train_dataset.batch_count)
-            raise RuntimeError('Wrong batch_size')        
         
         
         self.val_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'valid')
         print(f"Total valid dataset length: {len(self.val_dataset)}")
         self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
-        if self.val_dataset.batch_count != self.batch_size:
-            print(self.val_dataset.batch_count)
-            raise RuntimeError('Wrong batch_size')
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
         self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
+<<<<<<< Updated upstream
         self.weight_folder = "weight12"
         self.log_file = args.log_file if hasattr(args, 'log_file') else 'train_log9.txt'
+=======
+        self.weight_folder = cfg.weight
+        self.log_file = cfg.log
+>>>>>>> Stashed changes
         
         
         self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
