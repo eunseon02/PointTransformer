@@ -241,6 +241,8 @@ class PointCloud3DCNN(nn.Module):
         preds = preds.view(self.batch_size, -1, self.num_point_features)
         preds = preds[:, :, :3]
         
+        batch_coords = final_pruned.decomposed_coordinates
+        # print(batch_coords[0].shape)
         
         min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
         dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
@@ -250,8 +252,8 @@ class PointCloud3DCNN(nn.Module):
         # print(decoding.shape)
         # print(preds.shape)
         
-        return preds, classifications, targets, dense_tensor[0].squeeze(-1)
-    
+        return preds, classifications, targets,batch_coords[0][:, :3]
+
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx+1}'
         if hasattr(self, layer):

@@ -447,21 +447,21 @@ class Train():
 
                 # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-                self.tensorboard_launcher(occupancy_grid_to_coords(out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", writer)
+                self.tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", writer)
                 self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", writer)
                 self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", writer)
                 if iter == 1:
                     print("tensorboard_launcher")
-                    self.tensorboard_launcher(occupancy_grid_to_coords(out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
+                    self.tensorboard_launcher((out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
 
                 loss, check = self.criterion(occu, gt_occu, preds, gt_pts)
                 if iter == 1:
-                    writer.add_scalar("Loss/5 x 15 x 15", check[0], epoch)
-                    writer.add_scalar("Loss/10 x 30 x 30", check[1], epoch)
-                    writer.add_scalar("Loss/20 x 60 x 60", check[2], epoch)
-                    writer.add_scalar("Loss/50 x 120 x 120", check[3], epoch)
+                    writer.add_scalar("Loss/0", check[0], epoch)
+                    writer.add_scalar("Loss/1", check[1], epoch)
+                    writer.add_scalar("Loss/2", check[2], epoch)
+                    writer.add_scalar("Loss/3", check[3], epoch)
 
                     
                     
