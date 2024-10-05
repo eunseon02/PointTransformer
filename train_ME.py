@@ -127,14 +127,17 @@ class Train():
 
         start_epoch = 0
         for epoch in range(start_epoch, self.epochs):
-            if self.teacher_forcing_ratio != 1.0:
-                raise ValueError("not teachers forcing")
+            # if self.teacher_forcing_ratio != 1.0:
+            #     raise ValueError("not teachers forcing")
             
-            train_loss, epoch_time = self.train_epoch(epoch)
+            train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
             writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Loss/prob", loss1, epoch)
+            writer.add_scalar("Loss/keep", loss2, epoch)
 
-            # if (epoch+1) % 30 == 0:
-            #     self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
+
+            if (epoch + 31) % 20 == 0:
+                self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
             # save snapeshot
             if (epoch + 1) % self.snapshot_interval == 0:
@@ -379,6 +382,9 @@ class Train():
     def train_epoch(self, epoch):
         epoch_start_time = time.time()
         loss_buf = []
+        loss1_buf = []
+        loss2_buf = []
+
         self.model.train()
         preds = None
         prev_preds = []
@@ -441,22 +447,24 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out = self.model(sptensor, target_key, True, iter, epoch)
+                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, True, iter, epoch)
                 # self.tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
                 # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-                self.tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", writer)
-                self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", writer)
-                self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", writer)
+                
+                if (epoch + 1) % 10 == 0:
+                    self.tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
+                    self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
+                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
                 if iter == 1:
                     print("tensorboard_launcher")
                     self.tensorboard_launcher((out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
                     self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
 
-                loss, check = self.criterion(occu, gt_occu, preds, gt_pts)
+                loss, loss1, loss2, check = self.criterion(occu, gt_occu, preds, gt_pts, pred_keep, keep)
                 if iter == 1:
                     writer.add_scalar("Loss/0", check[0], epoch)
                     writer.add_scalar("Loss/1", check[1], epoch)
@@ -475,6 +483,8 @@ class Train():
                 #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
                 loss_buf.append(loss.item())
+                loss1_buf.append(loss1.item())
+                loss2_buf.append(loss2.item())
                 
                 # transform
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
@@ -488,7 +498,7 @@ class Train():
                         prev_preds.append(transformed_pred)
                         del transformed_pred
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, occu, sptensor, gt_occu
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, loss1, loss2, occu, sptensor, gt_occu
                 torch.cuda.empty_cache()
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)
@@ -497,7 +507,7 @@ class Train():
         self.train_hist['per_epoch_time'].append(epoch_time)
         self.train_hist['train_loss'].append(np.mean(loss_buf))
         # return np.mean(loss_buf), epoch_time, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses)
-        return np.mean(loss_buf), epoch_time
+        return np.mean(loss_buf), epoch_time, np.mean(loss1_buf), np.mean(loss2_buf)
 
 
     def _snapshot(self, epoch):

@@ -30,6 +30,7 @@ class PointCloud3DCNN(nn.Module):
         self.device = cfg.device
         self.num_point_features = 4
         self.max_num_points_per_voxel = 3
+        self.alpha = 0.0
         self.Encoder1 = nn.Sequential(
             ME.MinkowskiConvolution(in_channels=self.in_channels, kernel_size=3, stride=2, out_channels=enc_ch[0], dimension=self.D),
             ME.MinkowskiBatchNorm(enc_ch[0]),
@@ -194,6 +195,8 @@ class PointCloud3DCNN(nn.Module):
         outputs = []
         targets = []
         classifications = []
+        keep_buf = []
+        pred_keep_buf = []
         
         for layer_idx in reversed(range(num_layers)):
             conv_feat_layer = self.get_layer('conv_feat', layer_idx)
@@ -219,10 +222,17 @@ class PointCloud3DCNN(nn.Module):
 
             
             target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            keep = (pred_occu.F > 0.5).squeeze() 
-            # keep = pred_prob
+            # keep = (pred_occu.F > 0.5)
+            pred_keep = pred_occu.F
             # keep = target == 1
-            keep += target
+            gt_keep = target
+            # keep = gt_keep
+            # print(gt_keep.shape, (self.alpha * (pred_keep > 0.8)).shape)
+            keep = (1 - self.alpha) * gt_keep + self.alpha * (pred_keep > 0.8).squeeze(-1) == 1
+            # print(keep.shape)
+            if (epoch + 1) % 20 == 0:
+                self.alpha += 0.2
+                
             if torch.any(keep):
                 # Prune and upsample
                 pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
@@ -236,23 +246,21 @@ class PointCloud3DCNN(nn.Module):
             classifications.insert(0, pred_occu.F)
             targets.insert(0, target)
             outputs.insert(0, final_pruned)
-            
+            keep_buf.insert(0, pred_keep)
+            pred_keep_buf.insert(0, gt_keep)
+
         preds = self.postprocess(pyramid_output)
         preds = preds.view(self.batch_size, -1, self.num_point_features)
         preds = preds[:, :, :3]
         
         batch_coords = final_pruned.decomposed_coordinates
-        # print(batch_coords[0].shape)
+        # preds = self.get_coordinates(final_pruned)        
         
-        min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
-        dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
-        # print("out : ", dense_tensor[0].squeeze(-1).shape)
-
-        decoding = self.conv(dense_tensor[0].squeeze(-1)) # torch.Size([2, 1, 56, 120, 120])
-        # print(decoding.shape)
-        # print(preds.shape)
+        # min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
+        # dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
+        # decoding = self.conv(dense_tensor[0].squeeze(-1)) # torch.Size([2, 1, 56, 120, 120])
         
-        return preds, classifications, targets,batch_coords[0][:, :3]
+        return preds, classifications, targets, batch_coords[0][:, :3], pred_keep_buf, keep_buf
 
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx+1}'
@@ -299,6 +307,21 @@ class PointCloud3DCNN(nn.Module):
                 padding = torch.zeros((padding_size, feat.shape[1]), device=preds.device)
                 feat = torch.cat([feat, padding], dim=0)
             all_preds.append(preds)
+            
+            
+            
+    def get_coords(self, preds):
+        batch_coords = final_pruned.decomposed_coordinates
+        batch_counts = torch.zeros(len(batch_coords), device=preds.device)
+        for b, (coords) in enumerate((batch_coords)):
+            batch_counts[b] = coords.shape[0]
+        max_num_points = batch_counts.max().int()
+
+        for b, (coords) in enumerate((batch_coords)):
+            coords = coords[:, [2, 1, 0]]
+            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
+
+
         
     def postprocess(self, preds):
         all_preds = []

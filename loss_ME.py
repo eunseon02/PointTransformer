@@ -72,15 +72,22 @@ class NSLoss(nn.Module):
         loss /= batch_num
         return loss
 
-    def forward(self, pred_occu, gt_occu, preds, gt_pts):
+    def forward(self, pred_occu, gt_occu, preds, gt_pts, pred_keep, keep):
         loss1, check = self.compute_occupancy_loss(pred_occu, gt_occu)
+        loss2 = 0
+        for depth in range(len(keep)):
+            # print(pred_keep[depth].unsqueeze(-1).float().shape, keep[depth].float().shape)
+            keep_loss = F.binary_cross_entropy_with_logits(pred_keep[depth].unsqueeze(-1).float(), keep[depth].float(), reduction='mean')
+            loss2 += keep_loss
+        loss2 /= len(keep)
+        # print(loss1, loss2)
 
         # loss2 = self.compute_chamfer_loss(preds, gt_pts)
 
-        # total_loss = loss1 + 0.01 * loss2
+        total_loss = loss1 + 3*loss2
 
         # logging.info(f"loss1 {loss1}")
         # logging.info(f"loss2 {loss2}")
         # print("loss1", loss1)
         # print("loss2", loss2)
-        return loss1,check
+        return total_loss, loss1, loss2, check
