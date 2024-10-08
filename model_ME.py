@@ -160,7 +160,7 @@ class PointCloud3DCNN(nn.Module):
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
             if (epoch + 1) % cfg.debug_epoch == 0:
-                tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
+                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
 
 
             kernel_map = cm.kernel_map(
@@ -222,19 +222,20 @@ class PointCloud3DCNN(nn.Module):
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
             if (epoch + 1) % cfg.debug_epoch == 0:
-                tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"prob_{layer_idx}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
+                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"prob_{layer_idx}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
 
             target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            pred_keep = pred_occu.F
+            pred_keep = (pred_occu.F > 0.8)
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             
             # mask = torch.rand_like(pred_keep) < self.alpha
             # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
-            keep = gt_keep
+            keep = pred_keep
+            keep += gt_keep
             
-            if (epoch + 11) % 5 == 0:
-                self.alpha += 0.2
+            # if (epoch + 1) % 5 == 0:
+            #     self.alpha += 0.2
                 
             if torch.any(keep):
                 # Prune and upsample
@@ -249,8 +250,8 @@ class PointCloud3DCNN(nn.Module):
             classifications.insert(0, pred_occu.F)
             targets.insert(0, target)
             outputs.insert(0, final_pruned)
-            keep_buf.insert(0, pred_keep)
-            pred_keep_buf.insert(0, gt_keep)
+            keep_buf.insert(0, gt_keep)
+            pred_keep_buf.insert(0, pred_keep)
 
         if pyramid_output is None:
             raise ValueError("pyramid_output is None")

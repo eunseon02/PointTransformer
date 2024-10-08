@@ -473,7 +473,7 @@ class Train():
 
                     
                     
-                loss2.backward()
+                loss.backward()
 
                 for name, param in self.model.named_parameters():
                     print(f"Layer: {name} | requires_grad: {param.requires_grad}")

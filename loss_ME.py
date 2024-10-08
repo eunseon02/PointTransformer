@@ -77,7 +77,7 @@ class NSLoss(nn.Module):
         loss2 = 0
         for depth in range(len(keep)):
             # print(pred_keep[depth].unsqueeze(-1).float().shape, keep[depth].float().shape)
-            keep_loss = F.binary_cross_entropy_with_logits(pred_keep[depth].unsqueeze(-1).float(), keep[depth].float(), reduction='mean')
+            keep_loss = F.binary_cross_entropy_with_logits(pred_keep[depth].float(), keep[depth].unsqueeze(-1).float(), reduction='mean')
             loss2 += keep_loss
         loss2 /= len(keep)
         # print(loss1, loss2)
