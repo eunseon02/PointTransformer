@@ -225,7 +225,7 @@ class PointCloud3DCNN(nn.Module):
                 tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"prob_{layer_idx}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
 
             target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            pred_keep = (pred_occu.F > 0.8)
+            pred_keep = (pred_occu.F > 0.8).squeeze(-1)
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             

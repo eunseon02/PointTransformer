@@ -40,7 +40,7 @@ import h5py
 # from data import GetTarget
 import random
 import MinkowskiEngine as ME
-from debug import occupancy_grid_to_coords, tensor_to_ply, profileit
+from debug import occupancy_grid_to_coords, tensor_to_ply, profileit, tensorboard_launcher
 
 writer = cfg.writer
 
@@ -435,8 +435,8 @@ class Train():
                 gt_occu_, indices= self.occupancy_grid_(gt_pts) # batch x channel x D x W x H
 
                 # print(sptensor.dense()[0].shape)
-                # self.tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[0][:, :, :, :, :, 0]), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
-                # self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "gt_iter", writer)
+                # tensorboard_launcher(occupancy_grid_to_coords(sptensor.dense()[0][:, :, :, :, :, 0]), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+                # tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "gt_iter", writer)
                 
                 cm = sptensor.coordinate_manager
                 zeros = torch.zeros((indices.size(0), 1), device=pts.device)
@@ -448,21 +448,23 @@ class Train():
                 
                 self.optimizer.zero_grad()
                 preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, True, iter, epoch)
-                # self.tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
-                # self.tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+                # tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
+                # tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
-                # self.tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
-                # self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
+                # tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
+                # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
                 
                 if (epoch + 1) % 10 == 0:
-                    self.tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
-                    self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
-                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
-                if iter == 1:
-                    print("tensorboard_launcher")
-                    self.tensorboard_launcher((out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
-                    self.tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
-                    self.tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
+                    epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
+                    tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
+                    tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
+                    tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
+                    epoch_writer.close()
+                # if iter == 1:
+                #     print("tensorboard_launcher")
+                #     tensorboard_launcher((out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
+                #     tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
+                #     tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
 
                 loss, loss1, loss2, check = self.criterion(occu, gt_occu, preds, gt_pts, pred_keep, keep)
                 if iter == 1:
@@ -472,15 +474,14 @@ class Train():
                     writer.add_scalar("Loss/3", check[3], epoch)
 
                     
-                    
                 loss.backward()
 
-                for name, param in self.model.named_parameters():
-                    print(f"Layer: {name} | requires_grad: {param.requires_grad}")
-                    if param.grad is not None:
-                        print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
-                    else:
-                        print(f"Layer: {name} | No gradient calculated!")
+                # for name, param in self.model.named_parameters():
+                #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
+                #     if param.grad is not None:
+                #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
+                #     else:
+                #         print(f"Layer: {name} | No gradient calculated!")
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 loss1_buf.append(loss1.item())
