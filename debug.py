@@ -3,7 +3,6 @@ from torch.utils.tensorboard import SummaryWriter
 from open3d.visualization.tensorboard_plugin import summary
 from config import config as cfg
 
-writer = cfg.writer
 
 def tensor_to_ply(tensor, filename):
     # print("tensor", tensor.shape)
@@ -34,11 +33,10 @@ def profileit(func):
 
     return wrapper
 
-
-
-
-def tensorboard_launcher(points, step, color, tag):
+def tensorboard_launcher(points, step, color, tag, writer=None):
     # points = occupancy_grid_to_coords(points)
+    if writer is None:
+        writer = cfg.writer
     num_points = points.shape[0]
     colors = torch.tensor(color).repeat(num_points, 1)
     if num_points == 0:

@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from os.path import join
 from debug import tensor_to_ply,tensorboard_launcher
 import MinkowskiEngine as ME
+from torch.utils.tensorboard import SummaryWriter
 
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
@@ -155,9 +156,11 @@ class PointCloud3DCNN(nn.Module):
             ## for debugging
             batch_idx = coords[:, 0]
             coords = coords[:, 1:4]
-            tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
-            if iter == 1:
-                tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
+            # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
+            # if iter == 1:
+            #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
+            if (epoch + 1) % cfg.debug_epoch == 0:
+                tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
 
 
             kernel_map = cm.kernel_map(
@@ -180,7 +183,6 @@ class PointCloud3DCNN(nn.Module):
         enc_feat.append(enc_2)
         enc_3 = self.Encoder4(enc_2) # 3 x 8 x 8
         enc_feat.append(enc_3)
-        # print(enc_3.dense()[0].shape)
         enc_4 = self.Encoder5(enc_3) 
         enc_feat.append(enc_4)
 
@@ -216,21 +218,22 @@ class PointCloud3DCNN(nn.Module):
             coords = pred_occu.C
             batch_idx = coords[:, 0]
             coords = coords[:, 1:4]
-            tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
-            if iter == 1:
-                tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
+            # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
+            # if iter == 1:
+            #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
+            if (epoch + 1) % cfg.debug_epoch == 0:
+                tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"prob_{layer_idx}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
 
-            
             target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            # keep = (pred_occu.F > 0.5)
             pred_keep = pred_occu.F
-            # keep = target == 1
             gt_keep = target
-            # keep = gt_keep
-            # print(gt_keep.shape, (self.alpha * (pred_keep > 0.8)).shape)
-            keep = (1 - self.alpha) * gt_keep + self.alpha * (pred_keep > 0.8).squeeze(-1) == 1
-            # print(keep.shape)
-            if (epoch + 1) % 20 == 0:
+            # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
+            
+            # mask = torch.rand_like(pred_keep) < self.alpha
+            # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
+            keep = gt_keep
+            
+            if (epoch + 11) % 5 == 0:
                 self.alpha += 0.2
                 
             if torch.any(keep):
@@ -249,11 +252,13 @@ class PointCloud3DCNN(nn.Module):
             keep_buf.insert(0, pred_keep)
             pred_keep_buf.insert(0, gt_keep)
 
-        preds = self.postprocess(pyramid_output)
-        preds = preds.view(self.batch_size, -1, self.num_point_features)
-        preds = preds[:, :, :3]
+        if pyramid_output is None:
+            raise ValueError("pyramid_output is None")
+        preds, batch_coords = self.postprocess(pyramid_output)
+        preds = preds.view(self.batch_size, -1, self.max_num_points_per_voxel)
+        # preds = preds[:, :, :3]
         
-        batch_coords = final_pruned.decomposed_coordinates
+        # batch_coords = final_pruned.decomposed_coordinates
         # preds = self.get_coordinates(final_pruned)        
         
         # min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
@@ -262,6 +267,56 @@ class PointCloud3DCNN(nn.Module):
         
         return preds, classifications, targets, batch_coords[0][:, :3], pred_keep_buf, keep_buf
 
+    # def postprocess(self, preds):
+    #     all_preds = []
+    #     batch_coords, batch_feats = preds.decomposed_coordinates_and_features
+        
+    #     ## padding
+    #     batch_counts = torch.zeros(len(batch_coords), device=preds.device)
+    #     for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
+    #         batch_counts[b] = coords.shape[0]
+    #     max_num_points = batch_counts.max().int()
+    #     for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
+    #         feats = feats.view(-1, self.num_point_features, 3)
+    #         feats = feats[: ,:, :3]
+    #         coords = coords[:, [2, 1, 0]]
+    #         voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
+    #         pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
+    #         preds = pred.view(-1, 3 * self.num_point_features)
+            
+    #         padding_size = max_num_points - preds.shape[0]
+    #         if padding_size > 0:
+    #             padding = torch.zeros((padding_size, preds.shape[1]), device=preds.device)
+    #             preds = torch.cat([preds, padding], dim=0)
+    #         all_preds.append(preds)
+    #     all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
+    #     return all_preds
+    
+    
+    def postprocess(self, preds):
+        all_preds = []
+        batch_coords, batch_feats = preds.decomposed_coordinates_and_features
+        
+        ## padding
+        batch_counts = torch.zeros(len(batch_coords), device=preds.device)
+        for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
+            batch_counts[b] = coords.shape[0]
+        max_num_points = batch_counts.max().int()
+        for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
+            coords = coords[:, [2, 1, 0]]
+            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
+            # pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
+            preds = voxel_centers.view(-1, 3)
+            
+            padding_size = max_num_points - preds.shape[0]
+            if padding_size > 0:
+                padding = torch.zeros((padding_size, preds.shape[1]), device=preds.device)
+                preds = torch.cat([preds, padding], dim=0)
+            all_preds.append(preds)
+        all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
+        return all_preds , batch_coords
+
+    
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx+1}'
         if hasattr(self, layer):
@@ -323,30 +378,6 @@ class PointCloud3DCNN(nn.Module):
 
 
         
-    def postprocess(self, preds):
-        all_preds = []
-        batch_coords, batch_feats = preds.decomposed_coordinates_and_features
-        
-        ## padding
-        batch_counts = torch.zeros(len(batch_coords), device=preds.device)
-        for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
-            batch_counts[b] = coords.shape[0]
-        max_num_points = batch_counts.max().int()
-        for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
-            feats = feats.view(-1, self.num_point_features, 3)
-            feats = feats[: ,:, :3]
-            coords = coords[:, [2, 1, 0]]
-            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
-            pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
-            preds = pred.view(-1, 3 * self.num_point_features)
-            
-            padding_size = max_num_points - preds.shape[0]
-            if padding_size > 0:
-                padding = torch.zeros((padding_size, preds.shape[1]), device=preds.device)
-                preds = torch.cat([preds, padding], dim=0)
-            all_preds.append(preds)
-        all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
-        return all_preds
 
 
         
