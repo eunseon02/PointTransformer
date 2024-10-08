@@ -499,7 +499,7 @@ class Train():
                         prev_preds.append(transformed_pred)
                         del transformed_pred
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, loss1, loss2, occu, sptensor, gt_occu
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, loss1, loss2, occu, sptensor, gt_occu, check
                 torch.cuda.empty_cache()
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)

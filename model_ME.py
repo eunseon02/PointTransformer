@@ -154,13 +154,13 @@ class PointCloud3DCNN(nn.Module):
             coords = cm.get_coordinates(strided_target_key)
             
             ## for debugging
-            batch_idx = coords[:, 0]
-            coords = coords[:, 1:4]
-            # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
-            # if iter == 1:
-            #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
-            if (epoch + 1) % cfg.debug_epoch == 0:
-                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
+            # batch_idx = coords[:, 0]
+            # coords = coords[:, 1:4]
+            # # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
+            # # if iter == 1:
+            # #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
+            # if (epoch + 1) % cfg.debug_epoch == 0:
+            #     tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}_epoch", epoch_writer)
 
 
             kernel_map = cm.kernel_map(
@@ -172,7 +172,7 @@ class PointCloud3DCNN(nn.Module):
             for k, curr_in in kernel_map.items():
                 target[curr_in[0].long()] = 1
 
-        return target
+        return target, coords
     def encode(self, sparse_tensor):
         enc_feat = []
         enc_0 = self.Encoder1(sparse_tensor) # 20 x 60 x 60
@@ -214,17 +214,33 @@ class PointCloud3DCNN(nn.Module):
             pred_occu = conv_occu_layer(feat)
             # pred_prob = torch.sigmoid(pred_occu.F)
             
+            target, coord_ = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
+            
             ## for debugging
+            batch_idx = coord_[:, 0]
+            coord_ = coord_[:, 1:4]
+            # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
+            # if iter == 1:
+            #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
             coords = pred_occu.C
             batch_idx = coords[:, 0]
             coords = coords[:, 1:4]
             # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
+            
+            
+            
             if (epoch + 1) % cfg.debug_epoch == 0:
-                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"prob_{layer_idx}_epoch", SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}")))
+                epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
+                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}_epoch", epoch_writer)
+                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
+                epoch_writer.close()
 
-            target = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
+            
+            
+            
+            
             pred_keep = (pred_occu.F > 0.8).squeeze(-1)
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
