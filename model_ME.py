@@ -132,17 +132,32 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiReLU()
         )        
         self.conv_feat2 = nn.Sequential(
-            ME.MinkowskiConvolution(in_channels=dec_ch[1], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
+            ME.MinkowskiConvolution(in_channels=dec_ch[1], out_channels=dec_ch[2], kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(dec_ch[2]),
+            ME.MinkowskiReLU(),
+            ME.MinkowskiConvolution(in_channels=dec_ch[2], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
             ME.MinkowskiBatchNorm(self.upsample_feat_size),
             ME.MinkowskiReLU()
         )        
         self.conv_feat1 = nn.Sequential(
-            ME.MinkowskiConvolution(in_channels=dec_ch[0], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
+            ME.MinkowskiConvolution(in_channels=dec_ch[0], out_channels=dec_ch[1], kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(dec_ch[1]),
+            ME.MinkowskiReLU(),
+            ME.MinkowskiConvolution(in_channels=dec_ch[1], out_channels=dec_ch[2], kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(dec_ch[2]),
+            ME.MinkowskiReLU(),
+            ME.MinkowskiConvolution(in_channels=dec_ch[2], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
             ME.MinkowskiBatchNorm(self.upsample_feat_size),
             ME.MinkowskiReLU()
         )   
         self.conv_feat0 = nn.Sequential(
-            ME.MinkowskiConvolution(in_channels=self.out_channels, out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
+            ME.MinkowskiConvolution(in_channels=self.out_channels, out_channels=dec_ch[1], kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(dec_ch[1]),
+            ME.MinkowskiReLU(),
+            ME.MinkowskiConvolution(in_channels=dec_ch[1], out_channels=dec_ch[2], kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(dec_ch[2]),
+            ME.MinkowskiReLU(),
+            ME.MinkowskiConvolution(in_channels=dec_ch[2], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
             ME.MinkowskiBatchNorm(self.upsample_feat_size),
             ME.MinkowskiReLU()
         )    
@@ -238,8 +253,8 @@ class PointCloud3DCNN(nn.Module):
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
             if (epoch + 1) % cfg.debug_epoch == 0:
                 epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
-                tensorboard_launcher(coords_[batch_idx_ == 0], iter, [1.0, 0, 0], f"target_{layer_idx}_epoch", epoch_writer)
-                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 0, 1.0], f"prob_{layer_idx}_epoch", epoch_writer)
+                tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
+                tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
                 epoch_writer.close()
 
             pred_keep = (pred_occu.F > 0.8).squeeze(-1)
