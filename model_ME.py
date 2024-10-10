@@ -233,8 +233,8 @@ class PointCloud3DCNN(nn.Module):
             
             if (epoch + 1) % cfg.debug_epoch == 0:
                 epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
-                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}_epoch", epoch_writer)
-                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
+                tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"target_{layer_idx}_epoch", epoch_writer)
+                tensorboard_launcher(coords[batch_idx == 0], iter, [0, 0, 1.0], f"prob_{layer_idx}_epoch", epoch_writer)
                 epoch_writer.close()
 
             

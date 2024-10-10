@@ -12,7 +12,7 @@ class BinaryCrossEntropyLoss(nn.Module):
         super(BinaryCrossEntropyLoss, self).__init__()
         self.smoothing = smoothing
     
-    def forward(self, gts, preds):
+    def forward(self, preds, gts):
         gts = gts.float()
         preds = preds.float()
         # print(f"gts: {gts}")
@@ -26,7 +26,7 @@ class BinaryCrossEntropyLoss(nn.Module):
             # print(preds.min(), preds.max(), preds.mean())
             # preds = torch.sigmoid(preds)
             # gts = torch.sigmoid(gts)
-            loss = F.binary_cross_entropy_with_logits(preds, gts, reduction='mean')
+            loss = F.binary_cross_entropy(preds, gts, reduction='mean')
         # print(f"loss: {loss}")
 
         return loss

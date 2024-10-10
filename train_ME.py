@@ -136,7 +136,7 @@ class Train():
             writer.add_scalar("Loss/keep", loss2, epoch)
 
 
-            if (epoch + 31) % 20 == 0:
+            if (epoch + 1) % 20 == 0:
                 self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
             # save snapeshot
