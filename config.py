@@ -38,3 +38,4 @@ class config:
     weight = "weight13"
     log = 'train_log13.txt'
     debug_epoch = 10
+    start_epoch = 40

@@ -222,11 +222,11 @@ class PointCloud3DCNN(nn.Module):
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
             
-            target, coord_ = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
+            target, coords_ = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
             # print("coords : ", curr_feat.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
             ## for debugging
-            batch_idx = coord_[:, 0]
-            coord_ = coord_[:, 1:4]
+            batch_idx_ = coords_[:, 0]
+            coords_ = coords_[:, 1:4]
             # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
@@ -238,7 +238,7 @@ class PointCloud3DCNN(nn.Module):
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
             if (epoch + 1) % cfg.debug_epoch == 0:
                 epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
-                tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"target_{layer_idx}_epoch", epoch_writer)
+                tensorboard_launcher(coords_[batch_idx_ == 0], iter, [1.0, 0, 0], f"target_{layer_idx}_epoch", epoch_writer)
                 tensorboard_launcher(coords[batch_idx == 0], iter, [0, 0, 1.0], f"prob_{layer_idx}_epoch", epoch_writer)
                 epoch_writer.close()
 

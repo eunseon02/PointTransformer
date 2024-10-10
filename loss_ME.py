@@ -56,6 +56,33 @@ class NSLoss(nn.Module):
         loss /= num_depth
 
         return loss, check
+    
+    def compute_occupancy_focal_loss(self, pred_occu, gt_occu):
+        num_depth = len(pred_occu)
+        loss = 0
+        weights = torch.tensor([1, 2, 3, 4, 5, 6], dtype=torch.float32)
+        
+        check = []
+        
+        # Each decoder depth, predict the occupancy probability
+        for depth in range(num_depth):
+            pred = pred_occu[depth].squeeze(-1)
+            target = gt_occu[depth]
+            alpha, gamma = 0.25, 2.0
+            
+            occu_loss = self.occupancy_loss(pred, target)
+            p_t = torch.where(target == 1, pred, 1 - pred)
+            focal_loss = (alpha * (1 - p_t) ** gamma * occu_loss).mean()
+             
+            weighted_loss = focal_loss * weights[depth]
+            loss += weighted_loss
+            
+            # print(f"depth : {depth}, loss : {occu_loss} -> {weighted_loss}, weight : {weights[depth]}")
+            check.append(occu_loss)
+
+        loss /= num_depth
+
+        return loss, check
 
     def compute_chamfer_loss(self, preds, gts):
         loss = 0
@@ -73,7 +100,7 @@ class NSLoss(nn.Module):
         return loss
 
     def forward(self, pred_occu, gt_occu, preds, gt_pts, pred_keep, keep):
-        loss1, check = self.compute_occupancy_loss(pred_occu, gt_occu)
+        loss1, check = self.compute_occupancy_focal_loss(pred_occu, gt_occu)
         loss2 = 0
         for depth in range(len(keep)):
             # print(pred_keep[depth].float().shape, keep[depth].float().shape)

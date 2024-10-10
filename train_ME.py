@@ -125,7 +125,7 @@ class Train():
 
         self.model.train()
 
-        start_epoch = 0
+        start_epoch = cfg.start_epoch
         for epoch in range(start_epoch, self.epochs):
             # if self.teacher_forcing_ratio != 1.0:
             #     raise ValueError("not teachers forcing")
