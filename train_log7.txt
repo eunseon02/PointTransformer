@@ -1,0 +1,6 @@
+Epoch [1/300] - Train Loss: 0.7601, Validation Loss: 0.8459, Time: 46.4819s
+Epoch [2/300] - Train Loss: 0.7020, Validation Loss: 0.8009, Time: 96.8179s
+Epoch [3/300] - Train Loss: 0.6699, Validation Loss: 0.7893, Time: 78.7166s
+Epoch [4/300] - Train Loss: 0.6494, Validation Loss: 0.7635, Time: 90.0702s
+Epoch [5/300] - Train Loss: 0.6353, Validation Loss: 0.7740, Time: 116.2096s
+Epoch [6/300] - Train Loss: 0.6256, Validation Loss: 0.7426, Time: 46.5265s
