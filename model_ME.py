@@ -110,7 +110,10 @@ class PointCloud3DCNN(nn.Module):
         self.occu1 = nn.Sequential(
             ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
             ME.MinkowskiSigmoid()
-
+        )
+        self.occu0 = nn.Sequential(
+            ME.MinkowskiConvolution(self.upsample_feat_size, 1, kernel_size=1, bias=True, dimension=self.D),
+            ME.MinkowskiSigmoid()
         )
         self.conv_feat5 = nn.Sequential(
             ME.MinkowskiConvolution(in_channels=dec_ch[4], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
@@ -137,9 +140,13 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiConvolution(in_channels=dec_ch[0], out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
             ME.MinkowskiBatchNorm(self.upsample_feat_size),
             ME.MinkowskiReLU()
+        )   
+        self.conv_feat0 = nn.Sequential(
+            ME.MinkowskiConvolution(in_channels=self.out_channels, out_channels=self.upsample_feat_size, kernel_size=1, dimension=self.D),
+            ME.MinkowskiBatchNorm(self.upsample_feat_size),
+            ME.MinkowskiReLU()
         )    
         self.pruning = ME.MinkowskiPruning()
-        self.conv = nn.Conv3d(in_channels=12, out_channels=1, kernel_size=1)
         self.weight_initialization()
         
     def get_target(self, out, target_key, iter, epoch, num_layers, kernel_size=1):
@@ -152,7 +159,8 @@ class PointCloud3DCNN(nn.Module):
                 target_key, out.tensor_stride[0],
             )
             coords = cm.get_coordinates(strided_target_key)
-            
+
+            # print("coords : ", out.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
             ## for debugging
             # batch_idx = coords[:, 0]
             # coords = coords[:, 1:4]
@@ -175,6 +183,7 @@ class PointCloud3DCNN(nn.Module):
         return target, coords
     def encode(self, sparse_tensor):
         enc_feat = []
+        enc_feat.append(sparse_tensor)
         enc_0 = self.Encoder1(sparse_tensor) # 20 x 60 x 60
         enc_feat.append(enc_0)
         enc_1 = self.Encoder2(enc_0) # 10 x 30 x 30
@@ -203,8 +212,8 @@ class PointCloud3DCNN(nn.Module):
         for layer_idx in reversed(range(num_layers)):
             conv_feat_layer = self.get_layer('conv_feat', layer_idx)
             conv_occu_layer = self.get_layer('occu', layer_idx)
-            dec = self.get_layer('Decoder', layer_idx)
-            
+            if layer_idx is not 0:
+                dec = self.get_layer('Decoder', layer_idx)
             curr_feat = enc_feat[layer_idx]
 
             if pyramid_output is not None:
@@ -212,10 +221,9 @@ class PointCloud3DCNN(nn.Module):
                 curr_feat = curr_feat + pyramid_output 
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
-            # pred_prob = torch.sigmoid(pred_occu.F)
             
             target, coord_ = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
-            
+            # print("coords : ", curr_feat.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
             ## for debugging
             batch_idx = coord_[:, 0]
             coord_ = coord_[:, 1:4]
@@ -228,38 +236,31 @@ class PointCloud3DCNN(nn.Module):
             # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
-            
-            
-            
             if (epoch + 1) % cfg.debug_epoch == 0:
                 epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
                 tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"target_{layer_idx}_epoch", epoch_writer)
                 tensorboard_launcher(coords[batch_idx == 0], iter, [0, 0, 1.0], f"prob_{layer_idx}_epoch", epoch_writer)
                 epoch_writer.close()
 
-            
-            
-            
-            
             pred_keep = (pred_occu.F > 0.8).squeeze(-1)
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
-            
             # mask = torch.rand_like(pred_keep) < self.alpha
             # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
             keep = pred_keep
             keep += gt_keep
-            
             # if (epoch + 1) % 5 == 0:
             #     self.alpha += 0.2
-                
-            if torch.any(keep):
+            
+            if torch.any(keep) and layer_idx is not 0:
                 # Prune and upsample
                 pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
+                # print("coords : ", pyramid_output.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
+
                 # Generate final feature for current level
                 final_pruned = self.pruning(curr_feat, keep)
             else:
-                pyramid_output = None
+                # pyramid_output = None
                 final_pruned = None
             
             # Post processing
@@ -269,8 +270,10 @@ class PointCloud3DCNN(nn.Module):
             keep_buf.insert(0, gt_keep)
             pred_keep_buf.insert(0, pred_keep)
 
-        if pyramid_output is None:
-            raise ValueError("pyramid_output is None")
+        # if pyramid_output is None:
+        #     raise ValueError("pyramid_output is None")
+        
+        
         preds, batch_coords = self.postprocess(pyramid_output)
         preds = preds.view(self.batch_size, -1, self.max_num_points_per_voxel)
         # preds = preds[:, :, :3]
@@ -335,7 +338,7 @@ class PointCloud3DCNN(nn.Module):
 
     
     def get_layer(self, layer_name, layer_idx):
-        layer = f'{layer_name}{layer_idx+1}'
+        layer = f'{layer_name}{layer_idx}'
         if hasattr(self, layer):
             return getattr(self, layer)
         else:
