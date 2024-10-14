@@ -276,12 +276,14 @@ class PointCloud3DCNN(nn.Module):
 
                 # Generate final feature for current level
                 final_pruned = self.pruning(curr_feat, keep)
-                tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
-
+            elif torch.any(keep) and layer_idx is 0:
+                final_pruned = self.pruning(curr_feat, keep)
             else:
                 # pyramid_output = None
                 final_pruned = None
             
+            tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
+
             # Post processing
             classifications.insert(0, pred_occu.F)
             targets.insert(0, target)
@@ -292,8 +294,8 @@ class PointCloud3DCNN(nn.Module):
         # if pyramid_output is None:
         #     raise ValueError("pyramid_output is None")
         
-        
-        preds, batch_coords = self.postprocess(outputs[4])
+        # print(outputs[0].dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
+        preds, batch_coords = self.postprocess(outputs[0])
         preds = preds.view(self.batch_size, -1, self.max_num_points_per_voxel)
         # preds = preds[:, :, :3]
         
