@@ -94,23 +94,6 @@ class Train():
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
-    def tensorboard_launcher(self, points, step, color, tag, writer):
-        # points = occupancy_grid_to_coords(points)
-        num_points = points.shape[0]
-        colors = torch.tensor(color).repeat(num_points, 1)
-        if num_points == 0:
-            print(f"Warning: num_points is 0 : {tag}")
-            # return
-        else:
-            writer.add_3d(
-            tag,
-            {
-                "vertex_positions": points.float(), # (N, 3)
-                "vertex_colors": colors.float()  # (N, 3)
-            },
-            step)
-        del points, colors
-        torch.cuda.empty_cache()
     def run(self):
         self.train_hist = {
             'train_loss': [],
@@ -447,14 +430,14 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, True, iter, epoch)
+                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, cfg.train, iter, epoch)
                 # tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
                 # tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
                 
-                if (epoch + 1) % 10 == 0:
+                if (epoch + 1) % cfg.debug_epoch == 0:
                     epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
                     tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
                     tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
