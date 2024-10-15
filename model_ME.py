@@ -162,6 +162,8 @@ class PointCloud3DCNN(nn.Module):
             ME.MinkowskiReLU()
         )    
         self.pruning = ME.MinkowskiPruning()
+        self.global_pool = ME.MinkowskiGlobalMaxPooling()
+        self.broadcast_concat = ME.MinkowskiBroadcast()
         self.weight_initialization()
         
     def get_target(self, out, target_key, iter, epoch, num_layers, kernel_size=1):
@@ -198,16 +200,28 @@ class PointCloud3DCNN(nn.Module):
         return target, coords
     def encode(self, sparse_tensor):
         enc_feat = []
+        feature_global = self.global_pool(sparse_tensor)
+        sparse_tensor = self.broadcast_concat(sparse_tensor, feature_global)
         enc_feat.append(sparse_tensor)
         enc_0 = self.Encoder1(sparse_tensor) # 20 x 60 x 60
+        feature_global = self.global_pool(enc_0)
+        enc_0 = self.broadcast_concat(enc_0, feature_global)
         enc_feat.append(enc_0)
         enc_1 = self.Encoder2(enc_0) # 10 x 30 x 30
+        feature_global = self.global_pool(enc_1)
+        enc_1 = self.broadcast_concat(enc_1, feature_global)
         enc_feat.append(enc_1)
         enc_2 = self.Encoder3(enc_1) # 5 x 15 x 15
+        feature_global = self.global_pool(enc_2)
+        enc_2 = self.broadcast_concat(enc_2, feature_global)
         enc_feat.append(enc_2)
         enc_3 = self.Encoder4(enc_2) # 3 x 8 x 8
+        feature_global = self.global_pool(enc_3)
+        enc_3 = self.broadcast_concat(enc_3, feature_global)
         enc_feat.append(enc_3)
-        enc_4 = self.Encoder5(enc_3) 
+        enc_4 = self.Encoder5(enc_3)
+        feature_global = self.global_pool(enc_4)
+        enc_4 = self.broadcast_concat(enc_4, feature_global)
         enc_feat.append(enc_4)
 
         return enc_feat
