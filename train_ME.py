@@ -56,7 +56,7 @@ def pad_or_trim_cloud(pc, target_size=3000):
 
 class Train():
     def __init__(self, args):
-        self.epochs = 300
+        self.epochs = cfg.epochs
         self.snapshot_interval = 10
         self.batch_size = cfg.batch_size
         self.device = cfg.device
@@ -90,10 +90,7 @@ class Train():
         self.input_shape = (50, 120, 120, 2)
         
         self.is_train = cfg.is_train
-        if self.is_train is True:
-            self.teacher_forcing_ratio = 1.0
-        else:
-            self.teacher_forcing_ratio = 0
+        self.teacher_forcing_ratio = cfg.teacher_forcing_ratio
         self.decay_rate = 0.1
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
