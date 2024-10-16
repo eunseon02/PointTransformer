@@ -89,7 +89,11 @@ class Train():
         self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
         self.input_shape = (50, 120, 120, 2)
         
-        self.teacher_forcing_ratio = 1.0
+        self.is_train = cfg.is_train
+        if self.is_train is True:
+            self.teacher_forcing_ratio = 1.0
+        else:
+            self.teacher_forcing_ratio = 0
         self.decay_rate = 0.1
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
@@ -430,7 +434,7 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, cfg.train, iter, epoch)
+                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, self.is_train, iter, epoch)
                 # tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
