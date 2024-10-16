@@ -90,7 +90,7 @@ class Train():
         self.input_shape = (50, 120, 120, 2)
         
         self.teacher_forcing_ratio = 1.0
-        self.decay_rate = 0.01
+        self.decay_rate = 0.1
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
@@ -457,7 +457,7 @@ class Train():
                     writer.add_scalar("Loss/3", check[3], epoch)
 
                     
-                loss.backward()
+                loss1.backward()
 
                 # for name, param in self.model.named_parameters():
                 #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")

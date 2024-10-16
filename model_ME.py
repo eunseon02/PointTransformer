@@ -273,7 +273,7 @@ class PointCloud3DCNN(nn.Module):
                 tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
                 epoch_writer.close()
 
-            pred_keep = (pred_occu.F > 0.3).squeeze(-1)
+            pred_keep = (pred_occu.F > 0.8).squeeze(-1)
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             # mask = torch.rand_like(pred_keep) < self.alpha
@@ -294,8 +294,9 @@ class PointCloud3DCNN(nn.Module):
             elif torch.any(keep) and layer_idx is 0:
                 final_pruned = self.pruning(curr_feat, keep)
             else:
-                # pyramid_output = None
+                pyramid_output = None
                 final_pruned = None
+                
             
             tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
 
