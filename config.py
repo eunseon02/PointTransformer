@@ -38,7 +38,7 @@ class config:
 
     # Train configurations
     is_train = True
-    batch_size = 2
+    batch_size = 50
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = "./train_logs17"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
@@ -50,7 +50,7 @@ class config:
     epochs = 300
 
     # Training and testing parameters
-    debug_epoch = 1 if is_train else 1  
+    debug_epoch = 10 if is_train else 1  
     occu_cutoff = 0.8 if is_train else 0.2 
     teacher_forcing_ratio = 1.0 if is_train else 0.0 
     epochs = 300 if is_train else 1
