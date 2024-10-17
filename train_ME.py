@@ -189,7 +189,7 @@ class Train():
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
             ## sub-voxel feature
             indices_torch_trans = indices_torch[:, [2, 1, 0]] 
-            voxel_centers = (indices_torch_trans.float() * torch.tensor([0.05, 0.05, 0.05]).to(self.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(self.device)
+            voxel_centers = (indices_torch_trans.float() * torch.tensor([0.05, 0.05, 0.05]).to(self.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(self.device) + torch.tensor([0.025, 0.025, 0.025]).to(self.device)
             # tensor_to_ply(voxel_centers[0].view(-1, 3), "voxel_centers.ply")
             t_values = voxels_torch[:, :, 3] 
             voxels_torch = voxels_torch[:, :, :3]
@@ -381,6 +381,7 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
+                print(pts.shape, lidar_pos.shape, lidar_quat.shape)
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
@@ -438,11 +439,19 @@ class Train():
                 # tensorboard_launcher(occupancy_grid_to_coords(occu), iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
                 
+                
+                print(preds.shape)
                 if (epoch + 1) % cfg.debug_epoch == 0:
                     epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
+                    epoch_writer2 = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}_22"))
+
+                    tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
+                    tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
+
                     tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
                     tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
                     tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
+                    
                     epoch_writer.close()
                 # if iter == 1:
                 #     print("tensorboard_launcher")
