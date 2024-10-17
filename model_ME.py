@@ -362,7 +362,7 @@ class PointCloud3DCNN(nn.Module):
         max_num_points = batch_counts.max().int()
         for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
             coords = coords[:, [2, 1, 0]]
-            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
+            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device) + torch.tensor([0.025, 0.025, 0.025]).to(preds.device)
             # pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
             preds = voxel_centers.view(-1, 3)
             
