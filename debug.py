@@ -1,7 +1,7 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from open3d.visualization.tensorboard_plugin import summary
-from config import config as cfg
+from .config import config as cfg
 
 
 def tensor_to_ply(tensor, filename):

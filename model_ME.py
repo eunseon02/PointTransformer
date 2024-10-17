@@ -6,13 +6,14 @@ from spconv.pytorch.hash import HashTable
 import numpy as np
 from cumm import tensorview as tv
 import open3d as o3d
-from config import config as cfg
+from .config import config as cfg
 import cumm
 import torch.nn.functional as F
 from os.path import join
-from debug import tensor_to_ply,tensorboard_launcher, occupancy_grid_to_coords
 import MinkowskiEngine as ME
 from torch.utils.tensorboard import SummaryWriter
+from .utils import occupancy_grid, preprocess
+from .debug import tensor_to_ply,tensorboard_launcher, occupancy_grid_to_coords
 
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
@@ -29,9 +30,12 @@ class PointCloud3DCNN(nn.Module):
         self.upsample_feat_size = 128
         
         self.device = cfg.device
-        self.num_point_features = 4
-        self.max_num_points_per_voxel = 3
+        self.num_point_features = cfg.num_point_features
+        self.max_num_points_per_voxel = cfg.max_num_points_per_voxel
         self.alpha = 0.0
+        
+        self.prev_preds = []
+            
         self.Encoder1 = nn.Sequential(
             ME.MinkowskiConvolution(in_channels=self.in_channels, kernel_size=3, stride=2, out_channels=enc_ch[0], dimension=self.D),
             ME.MinkowskiBatchNorm(enc_ch[0]),
@@ -241,7 +245,7 @@ class PointCloud3DCNN(nn.Module):
         for layer_idx in reversed(range(num_layers)):
             conv_feat_layer = self.get_layer('conv_feat', layer_idx)
             conv_occu_layer = self.get_layer('occu', layer_idx)
-            if layer_idx is not 0:
+            if layer_idx != 0:
                 dec = self.get_layer('Decoder', layer_idx)
             curr_feat = enc_feat[layer_idx]
             tensorboard_launcher(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"skip_{layer_idx}")
@@ -267,7 +271,7 @@ class PointCloud3DCNN(nn.Module):
             # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
-            if (epoch + 1) % cfg.debug_epoch == 0:
+            if (epoch + 1) % cfg.debug_epoch == 0 and epoch != None:
                 epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
                 tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
                 tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
@@ -284,14 +288,14 @@ class PointCloud3DCNN(nn.Module):
             # if (epoch + 1) % 5 == 0:
             #     self.alpha += 0.2
             
-            if torch.any(keep) and layer_idx is not 0:
+            if torch.any(keep) and layer_idx != 0:
                 # Prune and upsample
                 pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
                 # print("coords : ", pyramid_output.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
 
                 # Generate final feature for current level
                 final_pruned = self.pruning(curr_feat, keep)
-            elif torch.any(keep) and layer_idx is 0:
+            elif torch.any(keep) and layer_idx == 0:
                 final_pruned = self.pruning(curr_feat, keep)
             else:
                 print("else")
@@ -374,7 +378,63 @@ class PointCloud3DCNN(nn.Module):
         all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
         return all_preds , batch_coords
 
-    
+    def process_pointclouds(self, data, iter):
+        print(data["lidar"].shape, data["delta_pose"].shape, data["delta_quat"].shape)
+        pts, gt_pts, lidar_pos, lidar_quat = data["lidar"], data["gt"], data["delta_pose"], data["delta_quat"]
+        pts = pts.to(self.device)
+        gt_pts = gt_pts.to(self.device)
+        lidar_pos = lidar_pos.to(self.device)
+        lidar_quat = lidar_quat.to(self.device)
+
+        pts_occu, _ = occupancy_grid(pts)
+
+        # concat
+        if len(self.prev_preds) > 0:
+            prev_preds = [torch.as_tensor(p) for p in prev_preds]
+            prev_preds_tensor = torch.stack(prev_preds).to(self.device)
+            ## 4D Convolution
+            batch_size, n, _ = pts.shape
+            zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+            pts = torch.cat([pts, zeros], dim=2)
+            batch_size, n, _ = prev_preds_tensor.shape
+            ones = torch.ones((batch_size, n, 1), device=pts.device)
+            prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
+            pts = torch.cat((prev_preds_tensor, pts), dim=1)
+            del prev_preds, prev_preds_tensor
+            prev_preds = []
+        else:
+            # pts = pts.repeat_interleave(2, dim=0)
+            pts = pts.view(self.batch_size, -1, 3)
+            ## 4D Convolution
+            batch_size, n, _ = pts.shape
+            zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+            pts = torch.cat([pts, zeros], dim=2)
+            
+        pts = torch.nan_to_num(pts, nan=0.0)
+        sptensor = preprocess(pts) # batch x channel x D x W x H xt
+        gt_occu_, indices= occupancy_grid(gt_pts) # batch x channel x D x W x H
+        
+        
+        cm = sptensor.coordinate_manager
+        zeros = torch.zeros((indices.size(0), 1), device=pts.device)
+        gt_pts_with_t = torch.cat([indices, zeros], dim=1)
+        target_key, _ = cm.insert_and_map(
+            gt_pts_with_t.int(),
+            string_id="target",
+        )
+        
+        preds, occu, gt_occu, out, pred_keep, keep = self.forward(sptensor, target_key, cfg.is_train, iter, 0)
+   
+        epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"epoch"))
+        tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
+        tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
+        tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
+        epoch_writer.close()
+
+
+
+        
+
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx}'
         if hasattr(self, layer):
