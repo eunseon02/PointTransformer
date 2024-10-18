@@ -12,8 +12,9 @@ import torch.nn.functional as F
 from os.path import join
 import MinkowskiEngine as ME
 from torch.utils.tensorboard import SummaryWriter
-from .utils import occupancy_grid, preprocess
+from .utils import occupancy_grid, preprocess, transform_point_cloud, pad_or_trim_cloud
 from .debug import tensor_to_ply,tensorboard_launcher, occupancy_grid_to_coords
+import random
 
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
@@ -379,7 +380,6 @@ class PointCloud3DCNN(nn.Module):
         return all_preds , batch_coords
 
     def process_pointclouds(self, data, iter):
-        print(data["lidar"].shape, data["delta_pose"].shape, data["delta_quat"].shape)
         pts, gt_pts, lidar_pos, lidar_quat = data["lidar"], data["gt"], data["delta_pose"], data["delta_quat"]
         pts = pts.to(self.device)
         gt_pts = gt_pts.to(self.device)
@@ -390,7 +390,7 @@ class PointCloud3DCNN(nn.Module):
 
         # concat
         if len(self.prev_preds) > 0:
-            prev_preds = [torch.as_tensor(p) for p in prev_preds]
+            prev_preds = [torch.as_tensor(p) for p in self.prev_preds]
             prev_preds_tensor = torch.stack(prev_preds).to(self.device)
             ## 4D Convolution
             batch_size, n, _ = pts.shape
@@ -399,9 +399,10 @@ class PointCloud3DCNN(nn.Module):
             batch_size, n, _ = prev_preds_tensor.shape
             ones = torch.ones((batch_size, n, 1), device=pts.device)
             prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
+            print(prev_preds_tensor.shape, pts.shape)
             pts = torch.cat((prev_preds_tensor, pts), dim=1)
-            del prev_preds, prev_preds_tensor
-            prev_preds = []
+            del self.prev_preds, prev_preds_tensor
+            self.prev_preds = []
         else:
             # pts = pts.repeat_interleave(2, dim=0)
             pts = pts.view(self.batch_size, -1, 3)
@@ -430,6 +431,20 @@ class PointCloud3DCNN(nn.Module):
         tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
         tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
         epoch_writer.close()
+        
+        
+
+        # transform
+        if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
+            for i in range(min(self.batch_size, preds.size(0))):
+                if random.random() < cfg.teacher_forcing_ratio:
+                    input_data = gt_pts[i].cpu()
+                else:
+                    input_data = preds[i].cpu()
+                transformed_pred = transform_point_cloud(input_data, lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=10000)
+                self.prev_preds.append(transformed_pred)
+                del transformed_pred
 
 
 

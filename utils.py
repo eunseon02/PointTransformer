@@ -2,8 +2,8 @@ import torch
 from .config import config as cfg
 import cumm.tensorview as tv
 import MinkowskiEngine as ME
-
-
+import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 def occupancy_grid(pc):
     from spconv.utils import Point2VoxelGPU3d
@@ -115,3 +115,36 @@ def preprocess(pc):
     
     del voxels_torch, indices_torch, relative_pose, voxel_centers, all_voxels, all_indices
     return sparse_tensor
+
+
+def transform_point_cloud(point_cloud, pos, quat):
+    """
+    Transform point cloud to world frame using position and quaternion.
+    """
+    quat = quat / np.linalg.norm(quat)
+    r = R.from_quat(quat)
+    rotation_matrix = r.as_matrix()
+
+    transformation_matrix = np.eye(4)
+    transformation_matrix[:3, :3] = rotation_matrix
+    transformation_matrix[:3, 3] = pos.flatten()
+
+
+    ones = torch.ones((point_cloud.shape[0], 1), dtype=torch.float32)
+    pc_homo = torch.cat([point_cloud, ones], dim=1)
+    transformation_matrix_torch = torch.from_numpy(transformation_matrix).float()
+    transformed_pc_homo = torch.matmul(transformation_matrix_torch, pc_homo.T).T
+
+    transformed_pc = transformed_pc_homo[:, :3]
+    del point_cloud, ones, pc_homo, transformation_matrix_torch, transformed_pc_homo
+    return transformed_pc
+
+
+def pad_or_trim_cloud(pc, target_size=3000):
+    n = pc.size(0)
+    if n < target_size:
+        padding = torch.zeros((target_size - n, 3))
+        pc = torch.cat([pc, padding], dim=0)
+    elif n > target_size:
+        pc = pc[:target_size, :]
+    return pc
