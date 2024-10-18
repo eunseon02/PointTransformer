@@ -387,6 +387,20 @@ class PointCloud3DCNN(nn.Module):
         lidar_quat = lidar_quat.to(self.device)
 
         pts_occu, _ = occupancy_grid(pts)
+        
+        
+        
+        
+        if len(self.prev_preds) > 0:
+            # transform
+            transformed_preds_list = []
+            for i in range(min(self.batch_size, self.prev_preds.size(0))):
+                transformed_pred = transform_point_cloud(self.prev_preds[i], lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                transformed_preds_list.append(transformed_pred)
+            self.prev_preds = torch.stack(transformed_preds_list)
+
+            tensorboard_launcher(pts[0], iter, [0.0, 0.0, 1.0], "pts")
+            tensorboard_launcher(self.prev_preds[0], iter, [1.0, 0.0, 1.0], "transformed_pts")
 
         # concat
         if len(self.prev_preds) > 0:
@@ -434,17 +448,19 @@ class PointCloud3DCNN(nn.Module):
         
         
 
-        # transform
+        # teacher-forcing
+        prev_preds_list = []
         if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
             for i in range(min(self.batch_size, preds.size(0))):
                 if random.random() < cfg.teacher_forcing_ratio:
                     input_data = gt_pts[i].cpu()
                 else:
                     input_data = preds[i].cpu()
-                transformed_pred = transform_point_cloud(input_data, lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=10000)
-                self.prev_preds.append(transformed_pred)
-                del transformed_pred
+                input_data = pad_or_trim_cloud(input_data, target_size=10000)
+                prev_preds_list.append(input_data)
+                del input_data
+                
+            self.prev_preds = torch.stack(prev_preds_list)
 
 
 

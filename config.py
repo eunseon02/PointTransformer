@@ -52,7 +52,7 @@ class config:
     # Training and testing parameters
     debug_epoch = 10 if is_train else 1  
     occu_cutoff = 0.8 if is_train else 0.2 
-    teacher_forcing_ratio = 1.0 if is_train else 1.0 
+    teacher_forcing_ratio = 1.0 if is_train else 1.0
     epochs = 300 if is_train else 1
 
     
