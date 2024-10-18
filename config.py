@@ -42,7 +42,7 @@ class config:
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = "./train_logs17"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
-    file = "lidar_data.h5"
+    file = "lidar_data_64.h5"
     weight = "weight17"
     log = 'train_log17.txt'
 
@@ -54,6 +54,7 @@ class config:
     occu_cutoff = 0.8 if is_train else 0.2 
     teacher_forcing_ratio = 1.0 if is_train else 0.0 
     epochs = 300 if is_train else 1
+    teacher_forcing_ratio = max(0.0,teacher_forcing_ratio - (start_epoch * decay_rate))  if start_epoch != 0 else teacher_forcing_ratio
 
     
     
