@@ -284,8 +284,8 @@ class PointCloud3DCNN(nn.Module):
             # mask = torch.rand_like(pred_keep) < self.alpha
             # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
             keep = pred_keep
-            if is_train:
-                keep += gt_keep
+            # if is_train:
+            #     keep += gt_keep
             # if (epoch + 1) % 5 == 0:
             #     self.alpha += 0.2
             
@@ -388,9 +388,6 @@ class PointCloud3DCNN(nn.Module):
 
         pts_occu, _ = occupancy_grid(pts)
         
-        
-        
-        
         if len(self.prev_preds) > 0:
             # transform
             transformed_preds_list = []
@@ -413,7 +410,6 @@ class PointCloud3DCNN(nn.Module):
             batch_size, n, _ = prev_preds_tensor.shape
             ones = torch.ones((batch_size, n, 1), device=pts.device)
             prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
-            print(prev_preds_tensor.shape, pts.shape)
             pts = torch.cat((prev_preds_tensor, pts), dim=1)
             del self.prev_preds, prev_preds_tensor
             self.prev_preds = []
@@ -442,6 +438,7 @@ class PointCloud3DCNN(nn.Module):
    
         epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"epoch"))
         tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
+        tensorboard_launcher((preds[0]), iter, [1.0, 0.0, 0.0], "pred-iter")
         tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
         tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
         epoch_writer.close()
@@ -461,6 +458,9 @@ class PointCloud3DCNN(nn.Module):
                 del input_data
                 
             self.prev_preds = torch.stack(prev_preds_list)
+            
+            
+        return preds
 
 
 
