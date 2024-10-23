@@ -41,6 +41,7 @@ import h5py
 import random
 import MinkowskiEngine as ME
 from debug import occupancy_grid_to_coords, tensor_to_ply, profileit, tensorboard_launcher
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 writer = cfg.writer
 
@@ -77,7 +78,9 @@ class Train():
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
-        self.optimizer = optim.Adam(self.parameter, lr=0.001, betas=(0.9, 0.999), weight_decay=1e-6)
+        self.optimizer = optim.Adam(self.parameter, lr=0.002, betas=(0.9, 0.999), weight_decay=1e-6)
+        self.scheduler = ReduceLROnPlateau(self.optimizer, 'min', patience=3, factor=0.3)
+
         self.weight_folder = cfg.weight
         self.log_file = args.log_file if hasattr(args, 'log_file') else cfg.log
         
@@ -130,7 +133,8 @@ class Train():
                     best_loss = train_loss
                     self._snapshot('best_{}'.format(epoch))
             log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Time: {epoch_time:.4f}s"
-            self.log(log_message)
+            print(log_message)
+            self.log(f"teacher_forcing : {self.teacher_forcing_ratio}")
         # finish all epoch
         self._snapshot(epoch + 1)
         if train_loss < best_loss:
@@ -381,7 +385,6 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
-                print(pts.shape, lidar_pos.shape, lidar_quat.shape)
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
@@ -440,13 +443,14 @@ class Train():
                 # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()), iter, [0.0, 0.0, 1.0], "pts_iter", writer)
                 
                 
-                print(preds.shape)
                 if (epoch + 1) % cfg.debug_epoch == 0:
-                    epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
-                    epoch_writer2 = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}_22"))
+                    epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
+                    epoch_writer2 = SummaryWriter(join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
 
                     tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
                     tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
+                    tensorboard_launcher(pts[0][:,  :3], iter, [0.0, 1.0, 1.0], "cat_pts", epoch_writer2)
+
 
                     tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
                     tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
@@ -468,6 +472,8 @@ class Train():
 
                     
                 loss1.backward()
+                self.scheduler.step(loss1)
+
 
                 # for name, param in self.model.named_parameters():
                 #     print(f"Layer: {name} | requires_grad: {param.requires_grad}")
@@ -488,7 +494,7 @@ class Train():
                         else:
                             input_data = preds[i].cpu()
                         transformed_pred = self.transform_point_cloud(input_data, lidar_pos[i].cpu(), lidar_quat[i].cpu())
-                        transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=3000)
+                        transformed_pred = pad_or_trim_cloud(transformed_pred, target_size=10000)
                         prev_preds.append(transformed_pred)
                         del transformed_pred
                 # empty memory
@@ -536,7 +542,7 @@ class Train():
     def log(self, message):
         with open(self.log_file, 'a') as f:
             f.write(message + '\n')
-        print(message)
+        
         
 
 def get_parser():

@@ -38,13 +38,13 @@ class config:
 
     # Train configurations
     is_train = True
-    batch_size = 50
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    BASE_LOGDIR = "./train_logs17"
+    batch_size = 64
+    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    BASE_LOGDIR = "./train_logs20"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
-    file = "lidar_data.h5"
-    weight = "weight17"
-    log = 'train_log17.txt'
+    file = "lidar_data_64.h5"
+    weight = "weight20"
+    log = 'train_log20.txt'
 
     start_epoch = 0
     epochs = 300
@@ -52,8 +52,9 @@ class config:
     # Training and testing parameters
     debug_epoch = 10 if is_train else 1  
     occu_cutoff = 0.8 if is_train else 0.2 
-    teacher_forcing_ratio = 1.0 if is_train else 0.0 
+    teacher_forcing_ratio = 1.0 if is_train else 1.0 
     epochs = 300 if is_train else 1
+    teacher_forcing_ratio = max(0.0,teacher_forcing_ratio - (start_epoch * decay_rate))  if start_epoch != 0 else teacher_forcing_ratio
 
     
     

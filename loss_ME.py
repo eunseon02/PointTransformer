@@ -68,7 +68,7 @@ class NSLoss(nn.Module):
         for depth in range(num_depth):
             pred = pred_occu[depth].squeeze(-1)
             target = gt_occu[depth]
-            alpha, gamma = 0.25, 2.0
+            alpha, gamma = 0.25, 0.5
             
             occu_loss = self.occupancy_loss(pred, target)
             p_t = torch.where(target == 1, pred, 1 - pred)
