@@ -422,7 +422,7 @@ class PointCloud3DCNN(nn.Module):
             pts = torch.cat([pts, zeros], dim=2)
             
         pts = torch.nan_to_num(pts, nan=0.0)
-        sptensor = preprocess(pts) # batch x channel x D x W x H xt
+        sptensor = preprocess(pts) # batch x channel x D x W x H x t
         gt_occu_, indices= occupancy_grid(gt_pts) # batch x channel x D x W x H
         
         
@@ -461,10 +461,6 @@ class PointCloud3DCNN(nn.Module):
             
             
         return preds
-
-
-
-        
 
     def get_layer(self, layer_name, layer_idx):
         layer = f'{layer_name}{layer_idx}'
