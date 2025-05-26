@@ -2,6 +2,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from open3d.visualization.tensorboard_plugin import summary
 from config import config as cfg
+import numpy as np
 
 
 def tensor_to_ply(tensor, filename):
@@ -32,11 +33,20 @@ def profileit(func):
         return retval
 
     return wrapper
-
 def tensorboard_launcher(points, step, color, tag, writer=None):
-    # points = occupancy_grid_to_coords(points)
+    MAX_POINTS_FOR_LOG = 10000
+    if points.shape[0] > MAX_POINTS_FOR_LOG:
+        points = points[:MAX_POINTS_FOR_LOG]
     if writer is None:
         writer = cfg.writer
+
+
+
+
+    points = points.detach().cpu().float()
+    mask   = torch.isfinite(points).all(dim=1)
+    points = points[mask]
+
     num_points = points.shape[0]
     colors = torch.tensor(color).repeat(num_points, 1)
     if num_points == 0:
@@ -52,3 +62,7 @@ def tensorboard_launcher(points, step, color, tag, writer=None):
         step)
     del points, colors
     torch.cuda.empty_cache()
+
+
+def wandb_vis():
+    

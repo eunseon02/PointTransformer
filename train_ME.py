@@ -45,6 +45,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 writer = cfg.writer
 
+
 def pad_or_trim_cloud(pc, target_size=3000):
     n = pc.size(0)
     if n < target_size:
@@ -53,6 +54,37 @@ def pad_or_trim_cloud(pc, target_size=3000):
     elif n > target_size:
         pc = pc[:target_size, :]  
     return pc
+
+def pad_and_collate_fn(batch):
+    """
+    batch: List of tuples
+      Each: (pts: Tensor(Nᵢ, 4), gt_pts, lidar_pos, lidar_quat, name)
+    Returns:
+      - pts_padded: Tensor(B, N_max, 4)
+      - gt_pts_padded: Tensor(B, N_max, 4)
+      - lidar_pos: Tensor(B, 3)
+      - lidar_quat: Tensor(B, 4)
+      - names: list of str
+    """
+    pts_list, gt_list, pos_list, quat_list, name_list = zip(*batch)
+    max_points = max(p.shape[0] for p in gt_list)
+
+    def pad_tensor(t, max_len):
+        if not isinstance(t, torch.Tensor):
+            t = torch.tensor(t, dtype=torch.float32)
+        pad_len = max_len - t.shape[0]
+        if pad_len > 0:
+            padding = torch.full((pad_len, t.shape[1]), float('nan'), dtype=t.dtype)
+            t = torch.cat([t, padding], dim=0)
+        return t
+
+
+    pts_padded = torch.stack([pad_tensor(p, max_points) for p in pts_list])
+    gt_padded = torch.stack([pad_tensor(g, max_points) for g in gt_list])
+    pos_tensor = torch.stack(pos_list)
+    quat_tensor = torch.stack(quat_list)
+
+    return pts_padded, gt_padded, pos_tensor, quat_tensor, list(name_list)
 
 
 class Train():
@@ -70,11 +102,11 @@ class Train():
         self.h5_file_path = cfg.file
         self.train_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'train')
         print(f"Total valid dataset length: {len(self.train_dataset)}")
-        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
+        self.train_loader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, collate_fn=pad_and_collate_fn)
         
-        self.val_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'valid')
-        print(f"Total valid dataset length: {len(self.val_dataset)}")
-        self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
+        # self.val_dataset = PointCloudDataset(self.h5_file_path, self.batch_size, 'valid')
+        # print(f"Total valid dataset length: {len(self.val_dataset)}")
+        # self.val_loader = torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,pin_memory=True)
         
         self.parameter = self.model.parameters()
         self.criterion = NSLoss().to(self.device)
@@ -84,13 +116,13 @@ class Train():
         self.weight_folder = cfg.weight
         self.log_file = args.log_file if hasattr(args, 'log_file') else cfg.log
         
-        self.min_coord_range_zyx = torch.tensor([-1.0, -3.0, -3.0])
-        self.max_coord_range_zyx = torch.tensor([1.5, 3.0, 3.0])
+        self.min_coord_range_zyx = torch.tensor([-20.0, -20.0, -20.0])
+        self.max_coord_range_zyx = torch.tensor([20.0, 20.0, 20.0])
         
-        self.voxel_size = torch.tensor([0.05, 0.05, 0.05]).to(self.device)
-        self.vsize_xyz=[0.05, 0.05, 0.05]
-        self.coors_range_xyz=[-3, -3, -1, 3, 3, 1.5]
-        self.input_shape = (50, 120, 120, 2)
+        self.voxel_size = torch.tensor([0.2, 0.2, 0.2]).to(self.device)
+        self.vsize_xyz=[0.2, 0.2, 0.2]
+        self.coors_range_xyz=[-20, -20, -20, 20, 20, 20]
+        # self.input_shape = (50, 120, 120, 2)
         
         self.is_train = cfg.is_train
         self.teacher_forcing_ratio = cfg.teacher_forcing_ratio
@@ -193,7 +225,7 @@ class Train():
             indices_torch = torch.tensor(indices_tv.cpu().numpy(), dtype=torch.int32).to(self.device)
             ## sub-voxel feature
             indices_torch_trans = indices_torch[:, [2, 1, 0]] 
-            voxel_centers = (indices_torch_trans.float() * torch.tensor([0.05, 0.05, 0.05]).to(self.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(self.device) + torch.tensor([0.025, 0.025, 0.025]).to(self.device)
+            voxel_centers = (indices_torch_trans.float() * torch.tensor([0.2, 0.2, 0.2]).to(self.device)) + torch.tensor([-20.0, -20.0, -20.0]).to(self.device) + torch.tensor([0.1, 0.1, 0.1]).to(self.device)
             # tensor_to_ply(voxel_centers[0].view(-1, 3), "voxel_centers.ply")
             t_values = voxels_torch[:, :, 3] 
             voxels_torch = voxels_torch[:, :, :3]
@@ -385,6 +417,8 @@ class Train():
                     continue
                 
                 pts, gt_pts, lidar_pos, lidar_quat, data_file_path = batch
+            
+
                 if gt_pts.shape[0] != self.batch_size:
                     print(f"Skipping batch {iter} because gt_pts first dimension {gt_pts.shape[0]} does not match batch size {self.batch_size}")
                     pbar.update(1)
@@ -395,6 +429,14 @@ class Train():
                 lidar_pos = lidar_pos.to(self.device)
                 lidar_quat = lidar_quat.to(self.device)
                 pts_occu, _ = self.occupancy_grid_(pts)
+
+                pts = torch.nan_to_num(pts, nan=0.0, posinf=0.0, neginf=0.0)
+                gt_pts = torch.nan_to_num(gt_pts, nan=0.0)
+
+                tensorboard_launcher(pts[1], iter, [1.0, 0.0, 0.0], "pts", writer)
+                print(pts[0])
+                # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", writer)
+
 
                 # concat
                 if len(prev_preds) > 0:
@@ -447,14 +489,14 @@ class Train():
                     epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
                     epoch_writer2 = SummaryWriter(join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
 
-                    tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
-                    tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
-                    tensorboard_launcher(pts[0][:,  :3], iter, [0.0, 1.0, 1.0], "cat_pts", epoch_writer2)
+                    # tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
+                    # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
+                    # tensorboard_launcher(pts[0][:,  :3], iter, [0.0, 1.0, 1.0], "cat_pts", epoch_writer2)
 
 
-                    tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
-                    tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
-                    tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
+                    # tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
+                    # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
+                    # tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
                     
                     epoch_writer.close()
                 # if iter == 1:

@@ -64,9 +64,14 @@ class PointCloudDataset(Dataset):
         pts_gt_data = group[f'{pts_dataset_name}_gt'][:].astype('float32')
         position = group[f'position_{file_idx:04d}'][:].astype('float32')
         quaternion = group[f'quaternion_{file_idx:04d}'][:].astype('float32')
-        return pts_data, pts_gt_data, position, quaternion, pts_dataset_name
 
-    
+        return (
+            torch.tensor(pts_data, dtype=torch.float32),
+            torch.tensor(pts_gt_data, dtype=torch.float32),
+            torch.tensor(position, dtype=torch.float32),
+            torch.tensor(quaternion, dtype=torch.float32),
+            pts_dataset_name
+        )
     def close(self):
         self.h5_file.close()
 class GetTarget(Dataset):

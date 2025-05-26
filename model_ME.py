@@ -362,7 +362,7 @@ class PointCloud3DCNN(nn.Module):
         max_num_points = batch_counts.max().int()
         for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
             coords = coords[:, [2, 1, 0]]
-            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device) + torch.tensor([0.025, 0.025, 0.025]).to(preds.device)
+            voxel_centers = (coords.float() * torch.tensor([0.2, 0.2, 0.2]).to(preds.device)) + torch.tensor([-20.0, -20.0, -20.0]).to(preds.device) + torch.tensor([0.1, 0.1, 0.1]).to(preds.device)
             # pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
             preds = voxel_centers.view(-1, 3)
             
@@ -423,16 +423,16 @@ class PointCloud3DCNN(nn.Module):
             
             
             
-    def get_coords(self, preds):
-        batch_coords = final_pruned.decomposed_coordinates
-        batch_counts = torch.zeros(len(batch_coords), device=preds.device)
-        for b, (coords) in enumerate((batch_coords)):
-            batch_counts[b] = coords.shape[0]
-        max_num_points = batch_counts.max().int()
+    # def get_coords(self, preds):
+    #     batch_coords = final_pruned.decomposed_coordinates
+    #     batch_counts = torch.zeros(len(batch_coords), device=preds.device)
+    #     for b, (coords) in enumerate((batch_coords)):
+    #         batch_counts[b] = coords.shape[0]
+    #     max_num_points = batch_counts.max().int()
 
-        for b, (coords) in enumerate((batch_coords)):
-            coords = coords[:, [2, 1, 0]]
-            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
+    #     for b, (coords) in enumerate((batch_coords)):
+    #         coords = coords[:, [2, 1, 0]]
+    #         voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
 
 
         
