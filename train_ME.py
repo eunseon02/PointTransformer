@@ -24,8 +24,8 @@ import cProfile
 import pstats
 import io
 import torch.distributed as dist
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
+# import torch.multiprocessing as mp
+# from torch.nn.parallel import DistributedDataParallel as DDP
 from loss_ME import NSLoss
 import gc
 import logging
@@ -34,7 +34,7 @@ import pickle
 from os.path import join
 from torch.utils.tensorboard import SummaryWriter
 from open3d.visualization.tensorboard_plugin import summary
-from torch.multiprocessing import Process
+# from torch.multiprocessing import Process
 import joblib
 import h5py
 # from data import GetTarget
@@ -42,6 +42,8 @@ import random
 import MinkowskiEngine as ME
 from debug import occupancy_grid_to_coords, tensor_to_ply, profileit, tensorboard_launcher
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import wandb
+wandb.init(project="pc_vis")
 
 writer = cfg.writer
 
@@ -433,8 +435,7 @@ class Train():
                 pts = torch.nan_to_num(pts, nan=0.0, posinf=0.0, neginf=0.0)
                 gt_pts = torch.nan_to_num(gt_pts, nan=0.0)
 
-                tensorboard_launcher(pts[1], iter, [1.0, 0.0, 0.0], "pts", writer)
-                print(pts[0])
+                # tensorboard_launcher(pts[1], iter, [1.0, 0.0, 0.0], "pts", writer)
                 # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", writer)
 
 
@@ -488,6 +489,11 @@ class Train():
                 if (epoch + 1) % cfg.debug_epoch == 0:
                     epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
                     epoch_writer2 = SummaryWriter(join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
+                    tensor_to_ply(preds[0], "pointcloud", "logs/pred.ply")
+                    tensor_to_ply(gt_pts[0], "gt_pointcloud", "logs/gt_pts.ply")
+                    tensor_to_ply(occupancy_grid_to_coords(pts_occu.dense()[0]), "dense-point", "logs/dense-pt.ply")
+                    tensor_to_ply(occupancy_grid_to_coords(gt_occu_.dense()[0]), "dense-gtpoint", "logs/dense-gt.ply")
+                    tensor_to_ply(out, "model-out", "logs/model-out.ply")
 
                     # tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
                     # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
@@ -499,6 +505,7 @@ class Train():
                     # tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
                     
                     epoch_writer.close()
+
                 # if iter == 1:
                 #     print("tensorboard_launcher")
                 #     tensorboard_launcher((out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)

@@ -3,9 +3,10 @@ from torch.utils.tensorboard import SummaryWriter
 from open3d.visualization.tensorboard_plugin import summary
 from config import config as cfg
 import numpy as np
+import open3d as o3d
+import wandb
 
-
-def tensor_to_ply(tensor, filename):
+def tensor_to_ply(tensor, tag, filename):
     # print("tensor", tensor.shape)
     points = tensor.cpu().detach().numpy()
     points = points.astype(np.float64)
@@ -16,6 +17,9 @@ def tensor_to_ply(tensor, filename):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
+    wandb.log({tag: wandb.Object3D(points)})
+
+    
 
 def occupancy_grid_to_coords(occupancy_grid):
     # occupancy_grid = occupancy_grid.permute(0, 4, 1, 2, 3)
@@ -64,5 +68,5 @@ def tensorboard_launcher(points, step, color, tag, writer=None):
     torch.cuda.empty_cache()
 
 
-def wandb_vis():
+# def wandb_vis():
     

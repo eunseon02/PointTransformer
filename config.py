@@ -42,7 +42,7 @@ class config:
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = "./train_logs20"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
-    file = "final_dataset.h5"
+    file = "small_dataset.h5"
     weight = "weight20"
     log = 'train_log20.txt'
 

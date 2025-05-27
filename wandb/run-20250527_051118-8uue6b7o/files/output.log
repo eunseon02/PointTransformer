@@ -1,0 +1,38 @@
+Total valid dataset length: 200
+Training start!!
+
+
+
+
+
+
+
+
+Epoch 1/300:  99%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████   | 99/100 [00:17<00:00,  5.47batch/s, train_loss=1.79]
+Epoch 1/300: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 100/100 [00:17<00:00,  5.58batch/s, train_loss=1.79]
+
+
+
+
+
+Epoch 2/300:  69%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▎                                                                                            | 69/100 [00:11<00:05,  5.78batch/s, train_loss=1.74]
+Traceback (most recent call last):
+  File "/root/PointTransformer/train_ME.py", line 618, in <module>
+    main()
+  File "/root/PointTransformer/train_ME.py", line 616, in main
+    main_worker(args)
+  File "/root/PointTransformer/train_ME.py", line 612, in main_worker
+    trainer.run()
+  File "/root/PointTransformer/train_ME.py", line 154, in run
+    train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
+  File "/root/PointTransformer/train_ME.py", line 415, in train_epoch
+    for iter, (batch) in enumerate(self.train_loader):
+  File "/root/anaconda3/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 631, in __next__
+    data = self._next_data()
+  File "/root/anaconda3/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 675, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/root/anaconda3/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 54, in fetch
+    return self.collate_fn(data)
+  File "/root/PointTransformer/train_ME.py", line 85, in pad_and_collate_fn
+    gt_padded = torch.stack([pad_tensor(g, max_points) for g in gt_list])
+KeyboardInterrupt
