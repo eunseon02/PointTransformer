@@ -244,11 +244,14 @@ class PointCloud3DCNN(nn.Module):
             if layer_idx is not 0:
                 dec = self.get_layer('Decoder', layer_idx)
             curr_feat = enc_feat[layer_idx]
-            tensorboard_launcher(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"skip_{layer_idx}")
+            # tensorboard_launcher(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"skip_{layer_idx}")
+            tensor_to_ply(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), "skip_", "logs/skip_.ply")
+
             if pyramid_output is not None:
                 assert pyramid_output.tensor_stride == curr_feat.tensor_stride
                 curr_feat = curr_feat + pyramid_output 
-                tensorboard_launcher(occupancy_grid_to_coords(pyramid_output.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"pyramid_output_{layer_idx}")
+                # tensorboard_launcher(occupancy_grid_to_coords(pyramid_output.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"pyramid_output_{layer_idx}")
+                tensor_to_ply(occupancy_grid_to_coords(pyramid_output.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), "pyramid_output_", "logs/pyramid_output_.ply")
 
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
