@@ -1,49 +1,55 @@
+# Standard library imports
+import os
+import sys
+import time
+import argparse
+import random
+import gc
+import logging
+import io
+import cProfile
+import pstats
+import pickle
+from collections import OrderedDict
 
+# Third-party imports
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
-from tqdm import tqdm
-import numpy as np
-from config import config as cfg
-from data import PointCloudDataset
-import os
-import time
-import argparse
-import open3d as o3d
-import spconv.pytorch as spconv
-import cumm.tensorview as tv
-import sys
-from model_ME import PointCloud3DCNN
+import torch.distributed as dist
 from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.tensorboard import SummaryWriter
+
+import wandb
+import open3d as o3d
+from open3d.visualization.tensorboard_plugin import summary
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.transform import Rotation as R
-import cProfile
-import pstats
-import io
-import torch.distributed as dist
-# import torch.multiprocessing as mp
-# from torch.nn.parallel import DistributedDataParallel as DDP
-from loss_ME import NSLoss
-import gc
-import logging
-from collections import OrderedDict
-import pickle
-from os.path import join
-from torch.utils.tensorboard import SummaryWriter
-from open3d.visualization.tensorboard_plugin import summary
-# from torch.multiprocessing import Process
-import joblib
+from tqdm import tqdm
 import h5py
-# from data import GetTarget
-import random
+import joblib
+
+import spconv.pytorch as spconv
+import cumm.tensorview as tv
 import MinkowskiEngine as ME
-from debug import occupancy_grid_to_coords, tensor_to_ply, profileit, tensorboard_launcher
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-import wandb
+
+# Local application imports
+from config import config as cfg
+from data import PointCloudDataset
+from model_ME import PointCloud3DCNN
+from loss_ME import NSLoss
+from debug import occupancy_grid_to_coords, wandb_log, profileit, tensorboard_launcher
+
 wandb.init(project="pc_vis")
+os.makedirs(cfg.wandb_log_dir, exist_ok=True)
+wandb.define_metric("Loss/*", step_metric="Loss/epoch")
+
 writer = cfg.writer
 
 def pad_or_trim_cloud(pc, target_size=3000):
@@ -67,22 +73,11 @@ def pad_and_collate_fn(batch):
       - names: list of str
     """
     pts_list, gt_list, pos_list, quat_list, name_list = zip(*batch)
-    max_pts_from_pts = max(p.shape[0] for p in pts_list)
-    max_pts_from_gt  = max(g.shape[0] for g in gt_list)
-    max_points = max(max_pts_from_pts, max_pts_from_gt)
-    def pad_tensor(t, max_len):
-        if not isinstance(t, torch.Tensor):
-            t = torch.tensor(t, dtype=torch.float32)
-        pad_len = max_len - t.shape[0]
-        if pad_len > 0:
-            padding = torch.full((pad_len, t.shape[1]), float('nan'), dtype=t.dtype)
-            t = torch.cat([t, padding], dim=0)
-        return t
 
+    pts_padded = pad_sequence(pts_list, batch_first=True, padding_value=float('nan'))
+    gt_padded  = pad_sequence(gt_list, batch_first=True, padding_value=float('nan'))
 
-    pts_padded = torch.stack([pad_tensor(p, max_points) for p in pts_list])
-    gt_padded = torch.stack([pad_tensor(g, max_points) for g in gt_list])
-    pos_tensor = torch.stack(pos_list)
+    pos_tensor  = torch.stack(pos_list)
     quat_tensor = torch.stack(quat_list)
 
     return pts_padded, gt_padded, pos_tensor, quat_tensor, list(name_list)
@@ -127,7 +122,7 @@ class Train():
         
         self.is_train = cfg.is_train
         self.teacher_forcing_ratio = cfg.teacher_forcing_ratio
-        self.decay_rate = 0.1
+        self.decay_rate = cfg.decay_rate
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
 
@@ -139,18 +134,20 @@ class Train():
             'total_time': []
         }
         self.val_hist = {'per_epoch_time': [], 'val_loss': []}
-        best_loss = 1000000000
+        best_loss = 1e9
         print('Training start!!')
+        print(f"Initial teacher_forcing_ratio: {self.teacher_forcing_ratio}")
+
         start_time = time.time()
-
         self.model.train()
-
         start_epoch = cfg.start_epoch
-        for epoch in range(start_epoch, self.epochs):
-            # if self.teacher_forcing_ratio != 1.0:
-            #     raise ValueError("not teachers forcing")
-            
+
+        for epoch in range(start_epoch, self.epochs):            
             train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
+
+            # logging
+            prefix = f"Debug/epoch_{epoch}"
+            wandb.define_metric(f"{prefix}/*", step_metric=f"{prefix}/step")
             writer.add_scalar("Loss/train", train_loss, epoch)
             writer.add_scalar("Loss/prob", loss1, epoch)
             writer.add_scalar("Loss/keep", loss2, epoch)
@@ -158,30 +155,35 @@ class Train():
                 "Loss/train": train_loss,
                 "Loss/prob":  loss1,
                 "Loss/keep":  loss2,
-            }, step=epoch)
+                "Loss/teacher_forcing_ratio": self.teacher_forcing_ratio,
+                "Loss/epoch": epoch,
+            }, step=(epoch+1) * 200)
 
-
-
+            # teacher forcing decay
             if (epoch + 1) % 20 == 0:
                 self.teacher_forcing_ratio = max(0.0, self.teacher_forcing_ratio - self.decay_rate)
 
             # save snapeshot
-            if (epoch + 1) % self.snapshot_interval == 0:
-                self._snapshot(epoch + 1)
-                if train_loss < best_loss:
-                    best_loss = train_loss
-                    self._snapshot('best_{}'.format(epoch))
+            if train_loss < best_loss:
+                best_loss = train_loss
+                best_epoch = epoch + 1
+                name = ( (best_epoch + 9)//10 ) * 10
+                self._snapshot(f'best_{name}')
+                print(f"[INFO] Best model updated at epoch {epoch + 1} with loss {best_loss:.4f}")
+
+            # epoch log
             log_message = f"Epoch [{epoch + 1}/{self.epochs}] - Train Loss: {train_loss:.4f}, Time: {epoch_time:.4f}s"
             print(log_message)
             self.log(f"teacher_forcing : {self.teacher_forcing_ratio}")
+
         # finish all epoch
         self._snapshot(epoch + 1)
-        if train_loss < best_loss:
-            best_loss = train_loss
-            self._snapshot('best')
         self.train_hist['total_time'].append(time.time() - start_time)
-        print("Avg one epoch time: %.2f, total %d epochs time: %.2f" % (np.mean(self.train_hist['per_epoch_time']),
-                                                                        self.epochs, self.train_hist['total_time'][0]))
+        print("Avg one epoch time: %.2f, total %d epochs time: %.2f" % (
+            np.mean(self.train_hist['per_epoch_time']),
+            self.epochs,
+            self.train_hist['total_time'][0])
+        )
         print("Training finish!... save training results")
         
 
@@ -233,7 +235,7 @@ class Train():
             ## sub-voxel feature
             indices_torch_trans = indices_torch[:, [2, 1, 0]] 
             voxel_centers = (indices_torch_trans.float() * torch.tensor([0.2, 0.2, 0.2]).to(self.device)) + torch.tensor([-20.0, -20.0, -20.0]).to(self.device) + torch.tensor([0.1, 0.1, 0.1]).to(self.device)
-            # tensor_to_ply(voxel_centers[0].view(-1, 3), "voxel_centers.ply")
+            # wandb_log(voxel_centers[0].view(-1, 3), "voxel_centers.ply")
             t_values = voxels_torch[:, :, 3] 
             voxels_torch = voxels_torch[:, :, :3]
             relative_pose = torch.where(voxels_torch == 0, torch.tensor(0.0).to(voxels_torch.device), (voxels_torch - voxel_centers.unsqueeze(1)) / self.voxel_size)
@@ -354,7 +356,7 @@ class Train():
 
         occupancy_grid = occupancy_grid.unsqueeze(-1).to(device)
         occupancy_grid = occupancy_grid.permute(0, 4, 1, 2, 3)
-        # tensor_to_ply(occupancy_grid_to_coords(occupancy_grid), "occupancy.ply")
+        # wandb_log(occupancy_grid_to_coords(occupancy_grid), "occupancy.ply")
 
         return occupancy_grid
 
@@ -492,13 +494,14 @@ class Train():
                 
                 
                 if (epoch + 1) % cfg.debug_epoch == 0:
-                    epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
-                    epoch_writer2 = SummaryWriter(join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
-                    tensor_to_ply(preds[0], "pointcloud", "logs/pred.ply")
-                    tensor_to_ply(gt_pts[0], "gt_pointcloud", "logs/gt_pts.ply")
-                    tensor_to_ply(occupancy_grid_to_coords(pts_occu.dense()[0]), "dense-point", "logs/dense-pt.ply")
-                    tensor_to_ply(occupancy_grid_to_coords(gt_occu_.dense()[0]), "dense-gtpoint", "logs/dense-gt.ply")
-                    tensor_to_ply(out, "model-out", "logs/model-out.ply")
+                    global_step = epoch * 200 + iter
+                    # epoch_writer = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
+                    # epoch_writer2 = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
+                    wandb_log(preds[0], global_step, f"epoch_{epoch}/pointcloud", "logs/pred.ply")
+                    wandb_log(gt_pts[0], global_step, f"epoch_{epoch}/gt_pointcloud", "logs/gt_pts.ply")
+                    wandb_log(occupancy_grid_to_coords(pts_occu.dense()[0]), global_step, f"epoch_{epoch}/dense-point", "logs/dense-pt.ply")
+                    wandb_log(occupancy_grid_to_coords(gt_occu_.dense()[0]), global_step, f"epoch_{epoch}/dense-gtpoint", "logs/dense-gt.ply")
+                    wandb_log(out, global_step, f"epoch_{epoch}/model-out", "logs/model-out.ply")
 
                     # tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
                     # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
@@ -509,7 +512,7 @@ class Train():
                     # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
                     # tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
                     
-                    epoch_writer.close()
+                    # epoch_writer.close()
 
                 # if iter == 1:
                 #     print("tensorboard_launcher")
@@ -596,8 +599,6 @@ class Train():
     def log(self, message):
         with open(self.log_file, 'a') as f:
             f.write(message + '\n')
-        
-        
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Unsupervised Point Cloud Feature Learning')

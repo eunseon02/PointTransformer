@@ -1,31 +1,47 @@
 import torch
-from torch.utils.tensorboard import SummaryWriter
-from open3d.visualization.tensorboard_plugin import summary
 from config import config as cfg
 import numpy as np
 import open3d as o3d
 import wandb
+import logging
 
-def tensor_to_ply(tensor, tag, filename):
-    # print("tensor", tensor.shape)
+def wandb_log(tensor, step_, tag, filename, last = False):
     points = tensor.cpu().detach().numpy()
     points = points.astype(np.float64)
-    # points=  points[0]
+
+    if points.shape[0] == 0:
+        logging.warning(f"[WARNING] wandb_log: no points to write for tag={tag}, step={step_}")
+    
     if points.shape[1] != 3:
         raise ValueError(f"Expected point cloud data with shape (n, 3), but got {points.shape}")
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     o3d.io.write_point_cloud(filename, pcd)
-    wandb.log({tag: wandb.Object3D(points)})
+    del pcd
 
-    
+    # prefix = tag.rsplit('/', 1)[0]
+    # step_tag = f"{prefix}/step" 
+    # print(step_)
+
+    wandb.log({tag: wandb.Object3D(points)}, step = step_)
+    # if (step_ - 198) % 200 != 0:
+    #     wandb.log({tag: wandb.Object3D(points)}, step = step_, commit=False)
+    # else:
+    #     wandb.log({tag: wandb.Object3D(points)}, step = step_, commit=True)
+            # wandb.finish()
 
 def occupancy_grid_to_coords(occupancy_grid):
     # occupancy_grid = occupancy_grid.permute(0, 4, 1, 2, 3)
     _, _, H, W, D = occupancy_grid.shape
     occupancy_grid = occupancy_grid[0, 0]
-    indices = torch.nonzero(occupancy_grid > 0, as_tuple=False) 
+    indices = torch.nonzero(occupancy_grid > 0, as_tuple=False)
+    # print(f"occupancy_grid shape: {occupancy_grid.shape}")
+    # print(f"[min, max, mean = {occupancy_grid.min().item():.4f}, {occupancy_grid.max().item():.4f}, {occupancy_grid.mean().item():.4f}")
+    # 몇 개의 포지티브가 있는지
+    pos = (occupancy_grid > 0).sum().item()
+    # print(f">0 개수 = {pos}")
+
     return indices
 
 def profileit(func):
@@ -35,17 +51,14 @@ def profileit(func):
         retval = prof.runcall(func, *args, **kwargs)
         prof.dump_stats(datafn)
         return retval
-
     return wrapper
+
 def tensorboard_launcher(points, step, color, tag, writer=None):
     MAX_POINTS_FOR_LOG = 10000
     if points.shape[0] > MAX_POINTS_FOR_LOG:
         points = points[:MAX_POINTS_FOR_LOG]
     if writer is None:
         writer = cfg.writer
-
-
-
 
     points = points.detach().cpu().float()
     mask   = torch.isfinite(points).all(dim=1)
@@ -66,7 +79,3 @@ def tensorboard_launcher(points, step, color, tag, writer=None):
         step)
     del points, colors
     torch.cuda.empty_cache()
-
-
-# def wandb_vis():
-    

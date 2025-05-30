@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 from pytorch3d.loss.chamfer import chamfer_distance
 import open3d as o3d
-import logging
+# import logging
 
 import torch
 

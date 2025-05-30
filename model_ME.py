@@ -10,9 +10,10 @@ from config import config as cfg
 import cumm
 import torch.nn.functional as F
 from os.path import join
-from debug import tensor_to_ply,tensorboard_launcher, occupancy_grid_to_coords
+from debug import wandb_log,tensorboard_launcher, occupancy_grid_to_coords
 import MinkowskiEngine as ME
 from torch.utils.tensorboard import SummaryWriter
+import os
 
 class PointCloud3DCNN(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
@@ -244,19 +245,23 @@ class PointCloud3DCNN(nn.Module):
             if layer_idx is not 0:
                 dec = self.get_layer('Decoder', layer_idx)
             curr_feat = enc_feat[layer_idx]
+
+            global_step = epoch * 200 + iter
             # tensorboard_launcher(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"skip_{layer_idx}")
-            tensor_to_ply(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), "skip_", "logs/skip_.ply")
+            # if (epoch + 1) % cfg.debug_epoch == 0:
+                # wandb_log(occupancy_grid_to_coords(curr_feat.dense()[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/skip_{layer_idx}", join(cfg.wandb_log_dir, f"skip_.ply"))
 
             if pyramid_output is not None:
                 assert pyramid_output.tensor_stride == curr_feat.tensor_stride
                 curr_feat = curr_feat + pyramid_output 
                 # tensorboard_launcher(occupancy_grid_to_coords(pyramid_output.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"pyramid_output_{layer_idx}")
-                tensor_to_ply(occupancy_grid_to_coords(pyramid_output.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), "pyramid_output_", "logs/pyramid_output_.ply")
+                # if (epoch + 1) % cfg.debug_epoch == 0:
+                    # wandb_log(occupancy_grid_to_coords(pyramid_output.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/pyramid_output_{layer_idx}", join(cfg.wandb_log_dir, f"pyramid_output_{layer_idx}.ply"))
 
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
             
-            target, coords_ = self.get_target(curr_feat, target_key, iter, epoch, layer_idx)
+            target, coords_ = self.get_target(curr_feat, target_key, global_step, epoch, layer_idx)
             # print("coords : ", curr_feat.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
             ## for debugging
             batch_idx_ = coords_[:, 0]
@@ -270,12 +275,12 @@ class PointCloud3DCNN(nn.Module):
             # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
-            if (epoch + 1) % cfg.debug_epoch == 0:
+            # if (epoch + 1) % cfg.debug_epoch == 0:
                 # epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
                 # tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
                 # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
-                tensor_to_ply(coords_[batch_idx_ == 0], "target_", "logs/target_.ply")
-                tensor_to_ply(coords[batch_idx == 0], "prob_", "logs/prob_.ply")
+                # wandb_log(coords_[batch_idx_ == 0], global_step, f"epoch_{epoch}/target_{layer_idx}", join(cfg.wandb_log_dir, f"target.ply"))
+                # wandb_log(coords[batch_idx == 0], global_step, f"epoch_{epoch}/prob_{layer_idx}", join(cfg.wandb_log_dir, f"prob_.ply"))
 
                 # epoch_writer.close()
 
@@ -304,8 +309,12 @@ class PointCloud3DCNN(nn.Module):
                 pyramid_output = None
                 final_pruned = None
                 
-            
-            tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
+
+
+            if (epoch + 1) % cfg.debug_epoch == 0:
+                # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
+                # print(iter)
+                wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
 
             # Post processing
             classifications.insert(0, pred_occu.F)
