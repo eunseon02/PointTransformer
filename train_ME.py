@@ -44,9 +44,7 @@ from debug import occupancy_grid_to_coords, tensor_to_ply, profileit, tensorboar
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import wandb
 wandb.init(project="pc_vis")
-
 writer = cfg.writer
-
 
 def pad_or_trim_cloud(pc, target_size=3000):
     n = pc.size(0)
@@ -69,8 +67,9 @@ def pad_and_collate_fn(batch):
       - names: list of str
     """
     pts_list, gt_list, pos_list, quat_list, name_list = zip(*batch)
-    max_points = max(p.shape[0] for p in gt_list)
-
+    max_pts_from_pts = max(p.shape[0] for p in pts_list)
+    max_pts_from_gt  = max(g.shape[0] for g in gt_list)
+    max_points = max(max_pts_from_pts, max_pts_from_gt)
     def pad_tensor(t, max_len):
         if not isinstance(t, torch.Tensor):
             t = torch.tensor(t, dtype=torch.float32)
@@ -118,12 +117,12 @@ class Train():
         self.weight_folder = cfg.weight
         self.log_file = args.log_file if hasattr(args, 'log_file') else cfg.log
         
-        self.min_coord_range_zyx = torch.tensor([-20.0, -20.0, -20.0])
-        self.max_coord_range_zyx = torch.tensor([20.0, 20.0, 20.0])
+        self.min_coord_range_zyx = torch.tensor([-10.0, -5.0, 0.0])
+        self.max_coord_range_zyx = torch.tensor([10.0, 5.0, 10.0])
         
-        self.voxel_size = torch.tensor([0.2, 0.2, 0.2]).to(self.device)
-        self.vsize_xyz=[0.2, 0.2, 0.2]
-        self.coors_range_xyz=[-20, -20, -20, 20, 20, 20]
+        self.voxel_size = torch.tensor([0.05, 0.05, 0.05]).to(self.device)
+        self.vsize_xyz=[0.05, 0.05, 0.05]
+        self.coors_range_xyz=[-10, -5, 0, 10, 5, 10]
         # self.input_shape = (50, 120, 120, 2)
         
         self.is_train = cfg.is_train
@@ -155,6 +154,12 @@ class Train():
             writer.add_scalar("Loss/train", train_loss, epoch)
             writer.add_scalar("Loss/prob", loss1, epoch)
             writer.add_scalar("Loss/keep", loss2, epoch)
+            wandb.log({
+                "Loss/train": train_loss,
+                "Loss/prob":  loss1,
+                "Loss/keep":  loss2,
+            }, step=epoch)
+
 
 
             if (epoch + 1) % 20 == 0:

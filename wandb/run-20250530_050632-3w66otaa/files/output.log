@@ -1,0 +1,23 @@
+Total valid dataset length: 1600
+Training start!!
+Epoch 1/300:   0%|                                                                                                                                                                                                                                                                                                                                               | 0/200 [00:00<?, ?batch/s]
+Traceback (most recent call last):
+  File "/root/PointTransformer/train_ME.py", line 616, in <module>
+    main()
+  File "/root/PointTransformer/train_ME.py", line 614, in main
+    main_worker(args)
+  File "/root/PointTransformer/train_ME.py", line 610, in main_worker
+    trainer.run()
+  File "/root/PointTransformer/train_ME.py", line 152, in run
+    train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
+  File "/root/PointTransformer/train_ME.py", line 419, in train_epoch
+    for iter, (batch) in enumerate(self.train_loader):
+  File "/root/anaconda3/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 631, in __next__
+    data = self._next_data()
+  File "/root/anaconda3/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 675, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/root/anaconda3/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 54, in fetch
+    return self.collate_fn(data)
+  File "/root/PointTransformer/train_ME.py", line 82, in pad_and_collate_fn
+    pts_padded = torch.stack([pad_tensor(p, max_points) for p in pts_list])
+RuntimeError: stack expects each tensor to be equal size, but got [197177, 3] at entry 0 and [201629, 3] at entry 5

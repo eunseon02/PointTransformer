@@ -27,10 +27,10 @@ class config:
     # dimension = 3
 
     # Voxelize
-    vsize_xyz = [0.5, 0.5, 0.5]
-    coors_range_xyz = [-20, -20, -20, 20, 20, 20]
-    input_shape = (50, 120, 120, 2)
-    voxel_size = torch.tensor([0.5, 0.5, 0.5])
+    vsize_xyz = [0.05, 0.05, 0.05]
+    coors_range_xyz = [-10, -5, 0, 10, 5, 10]
+    # input_shape = (50, 120, 120, 2)
+    voxel_size = torch.tensor([0.05, 0.05, 0.05])
 
     # Point cloud features
     num_point_features = 4  
@@ -38,11 +38,11 @@ class config:
 
     # Train configurations
     is_train = True
-    batch_size = 2
+    batch_size = 8
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = "./train_logs20"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
-    file = "small_dataset.h5"
+    file = "final_dataset.h5"
     weight = "weight20"
     log = 'train_log20.txt'
 

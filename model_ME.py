@@ -268,10 +268,13 @@ class PointCloud3DCNN(nn.Module):
             # if iter == 1:
             #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
             if (epoch + 1) % cfg.debug_epoch == 0:
-                epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
-                tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
-                tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
-                epoch_writer.close()
+                # epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
+                # tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
+                # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
+                tensor_to_ply(coords_[batch_idx_ == 0], "target_", "logs/target_.ply")
+                tensor_to_ply(coords[batch_idx == 0], "prob_", "logs/prob_.ply")
+
+                # epoch_writer.close()
 
             pred_keep = (pred_occu.F > cfg.occu_cutoff).squeeze(-1)
             gt_keep = target
@@ -362,7 +365,7 @@ class PointCloud3DCNN(nn.Module):
         max_num_points = batch_counts.max().int()
         for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
             coords = coords[:, [2, 1, 0]]
-            voxel_centers = (coords.float() * torch.tensor([0.2, 0.2, 0.2]).to(preds.device)) + torch.tensor([-20.0, -20.0, -20.0]).to(preds.device) + torch.tensor([0.1, 0.1, 0.1]).to(preds.device)
+            voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-10.0, -5.0, 0.0]).to(preds.device) + torch.tensor([0.025, 0.025, 0.025]).to(preds.device)
             # pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
             preds = voxel_centers.view(-1, 3)
             

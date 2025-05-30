@@ -1,0 +1,23 @@
+Total valid dataset length: 1600
+Training start!!
+Epoch 1/300:   0%|                                                                                                                                                                                                                                                                                                                                               | 0/200 [00:01<?, ?batch/s]
+Traceback (most recent call last):
+  File "/root/PointTransformer/train_ME.py", line 617, in <module>
+    main()
+  File "/root/PointTransformer/train_ME.py", line 615, in main
+    main_worker(args)
+  File "/root/PointTransformer/train_ME.py", line 611, in main_worker
+    trainer.run()
+  File "/root/PointTransformer/train_ME.py", line 153, in run
+    train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
+  File "/root/PointTransformer/train_ME.py", line 438, in train_epoch
+    pts_occu, _ = self.occupancy_grid_(pts)
+  File "/root/PointTransformer/train_ME.py", line 324, in occupancy_grid_
+    sparse_tensor = ME.SparseTensor(features=features_tc,
+  File "/root/anaconda3/lib/python3.9/site-packages/MinkowskiEngine-0.5.4-py3.9-linux-x86_64.egg/MinkowskiEngine/MinkowskiSparseTensor.py", line 275, in __init__
+    coordinates, features, coordinate_map_key = self.initialize_coordinates(
+  File "/root/anaconda3/lib/python3.9/site-packages/MinkowskiEngine-0.5.4-py3.9-linux-x86_64.egg/MinkowskiEngine/MinkowskiSparseTensor.py", line 304, in initialize_coordinates
+    ) = self._manager.insert_and_map(coordinates, *coordinate_map_key.get_key())
+  File "/root/anaconda3/lib/python3.9/site-packages/MinkowskiEngine-0.5.4-py3.9-linux-x86_64.egg/MinkowskiEngine/MinkowskiCoordinateManager.py", line 179, in insert_and_map
+    return self._manager.insert_and_map(coordinates, tensor_stride, string_id)
+RuntimeError: CUDA error encountered at: /MinkowskiEngine/src/3rdparty/concurrent_unordered_map.cuh:595: 209 cudaErrorNoKernelImageForDevice no kernel image is available for execution on the device
