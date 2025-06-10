@@ -7,10 +7,11 @@ import numpy as np
 from cumm import tensorview as tv
 import open3d as o3d
 from config import config as cfg
+from utils import occupancy_grid, preprocess, transform_point_cloud
 import cumm
 import torch.nn.functional as F
 from os.path import join
-from debug import wandb_log,tensorboard_launcher, occupancy_grid_to_coords
+from debug import wandb_log, tensorboard_launcher, occupancy_grid_to_coords
 import MinkowskiEngine as ME
 from torch.utils.tensorboard import SummaryWriter
 import os
@@ -33,6 +34,9 @@ class PointCloud3DCNN(nn.Module):
         self.num_point_features = 4
         self.max_num_points_per_voxel = 3
         self.alpha = 0.0
+
+        self.prev_preds = []
+
         self.Encoder1 = nn.Sequential(
             ME.MinkowskiConvolution(in_channels=self.in_channels, kernel_size=3, stride=2, out_channels=enc_ch[0], dimension=self.D),
             ME.MinkowskiBatchNorm(enc_ch[0]),
@@ -227,7 +231,7 @@ class PointCloud3DCNN(nn.Module):
 
         return enc_feat
         
-    def forward(self, sparse_tensor, target_key, is_train, iter, epoch):
+    def forward(self, sparse_tensor, is_train, iter, epoch, target_key=None):
         probs = []
         enc_feat = self.encode(sparse_tensor)
         pyramid_output = None
@@ -261,31 +265,27 @@ class PointCloud3DCNN(nn.Module):
             feat = conv_feat_layer(curr_feat)
             pred_occu = conv_occu_layer(feat)
             
-            target, coords_ = self.get_target(curr_feat, target_key, global_step, epoch, layer_idx)
-            # print("coords : ", curr_feat.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
-            ## for debugging
-            batch_idx_ = coords_[:, 0]
-            coords_ = coords_[:, 1:4]
-            # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
-            # if iter == 1:
-            #     tensorboard_launcher(coords[batch_idx == 0], epoch, [0, 1.0, 0], f"target_{num_layers}_epoch")
+            if target_key is not None:
+                target, coords_ = self.get_target(curr_feat, target_key, global_step, epoch, layer_idx)
+                ## for logging
+                batch_idx_ = coords_[:, 0]
+                coords_ = coords_[:, 1:4]
+                gt_keep = target
+
+                # tensorboard_launcher(coords[batch_idx == 0], iter, [0, 1.0, 0], f"target_{num_layers}")
             coords = pred_occu.C
             batch_idx = coords[:, 0]
             coords = coords[:, 1:4]
-            # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}")
-            # if iter == 1:
-            #     tensorboard_launcher(coords[batch_idx == 0], epoch, [1.0, 0, 0], f"prob_{layer_idx}_epoch")
+
             # if (epoch + 1) % cfg.debug_epoch == 0:
                 # epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
                 # tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
                 # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
                 # wandb_log(coords_[batch_idx_ == 0], global_step, f"epoch_{epoch}/target_{layer_idx}", join(cfg.wandb_log_dir, f"target.ply"))
                 # wandb_log(coords[batch_idx == 0], global_step, f"epoch_{epoch}/prob_{layer_idx}", join(cfg.wandb_log_dir, f"prob_.ply"))
-
                 # epoch_writer.close()
 
-            pred_keep = (pred_occu.F > cfg.occu_cutoff).squeeze(-1)
-            gt_keep = target
+            pred_keep = (pred_occu.F > 0.55).squeeze(-1)
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             # mask = torch.rand_like(pred_keep) < self.alpha
             # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
@@ -318,52 +318,19 @@ class PointCloud3DCNN(nn.Module):
 
             # Post processing
             classifications.insert(0, pred_occu.F)
-            targets.insert(0, target)
             outputs.insert(0, final_pruned)
-            keep_buf.insert(0, gt_keep)
             pred_keep_buf.insert(0, pred_keep)
+            if target_key is not None:
+                keep_buf.insert(0, gt_keep)
+                targets.insert(0, target)
 
-        # if pyramid_output is None:
-        #     raise ValueError("pyramid_output is None")
-        
-        # print(outputs[0].dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
         preds, batch_coords = self.postprocess(outputs[0])
         preds = preds.view(self.batch_size, -1, self.max_num_points_per_voxel)
-        # preds = preds[:, :, :3]
-        
-        # batch_coords = final_pruned.decomposed_coordinates
-        # preds = self.get_coordinates(final_pruned)        
-        
-        # min_coord = torch.tensor([0, 0, 0, 0], dtype=torch.int32)
-        # dense_tensor = pyramid_output.dense(min_coordinate=min_coord)
-        # decoding = self.conv(dense_tensor[0].squeeze(-1)) # torch.Size([2, 1, 56, 120, 120])
-        
-        return preds, classifications, targets, batch_coords[0][:, :3], pred_keep_buf, keep_buf
 
-    # def postprocess(self, preds):
-    #     all_preds = []
-    #     batch_coords, batch_feats = preds.decomposed_coordinates_and_features
-        
-    #     ## padding
-    #     batch_counts = torch.zeros(len(batch_coords), device=preds.device)
-    #     for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
-    #         batch_counts[b] = coords.shape[0]
-    #     max_num_points = batch_counts.max().int()
-    #     for b, (coords, feats) in enumerate(zip(batch_coords, batch_feats)):
-    #         feats = feats.view(-1, self.num_point_features, 3)
-    #         feats = feats[: ,:, :3]
-    #         coords = coords[:, [2, 1, 0]]
-    #         voxel_centers = (coords.float() * torch.tensor([0.05, 0.05, 0.05]).to(preds.device)) + torch.tensor([-3.0, -3.0, -1.0]).to(preds.device)
-    #         pred = torch.where(feats == 0, torch.zeros_like(feats), (voxel_centers.unsqueeze(1).to(self.device) + feats*torch.tensor([0.05, 0.05, 0.05]).to(self.device)))
-    #         preds = pred.view(-1, 3 * self.num_point_features)
-            
-    #         padding_size = max_num_points - preds.shape[0]
-    #         if padding_size > 0:
-    #             padding = torch.zeros((padding_size, preds.shape[1]), device=preds.device)
-    #             preds = torch.cat([preds, padding], dim=0)
-    #         all_preds.append(preds)
-    #     all_preds = torch.stack(all_preds, dim=0)    # (batch_size, max_num_points, 9) 
-    #     return all_preds
+        if target_key is None: 
+            return preds
+        else:
+            return preds, classifications, targets, batch_coords[0][:, :3], pred_keep_buf, keep_buf
     
     
     def postprocess(self, preds):
@@ -435,6 +402,68 @@ class PointCloud3DCNN(nn.Module):
                 padding = torch.zeros((padding_size, feat.shape[1]), device=preds.device)
                 feat = torch.cat([feat, padding], dim=0)
             all_preds.append(preds)
+
+
+    def process_pointclouds(self, data, iter):
+        pts, gt_pts, lidar_pos, lidar_quat = data.get("lidar"), data.get("gt"), data.get("delta_pose"), data.get("delta_quat")
+        pts = pts.to(self.device)
+        if gt_pts is not None:
+            lidar_pos = lidar_pos.to(self.device)
+            lidar_quat = lidar_quat.to(self.device)
+            
+            gt_pts = gt_pts.to(self.device)
+            gt_occu_, indices= occupancy_grid(gt_pts) # batch x channel x D x W x H
+            
+            cm = sptensor.coordinate_manager
+            zeros = torch.zeros((indices.size(0), 1), device=pts.device)
+            gt_pts_with_t = torch.cat([indices, zeros], dim=1)
+            target_key, _ = cm.insert_and_map(
+                gt_pts_with_t.int(),
+                string_id="target",
+            )
+
+        pts_occu, _ = occupancy_grid(pts)
+        
+        if len(self.prev_preds) > 0:
+            # transform
+            transformed_preds_list = []
+            for i in range(min(self.batch_size, self.prev_preds.size(0))):
+                transformed_pred = transform_point_cloud(self.prev_preds[i], lidar_pos[i].cpu(), lidar_quat[i].cpu())
+                transformed_preds_list.append(transformed_pred)
+            self.prev_preds = torch.stack(transformed_preds_list)
+
+            wandb_log(pts[0], iter, [0.0, 0.0, 1.0], "pts")
+
+        # concat
+        if len(self.prev_preds) > 0:
+            prev_preds = [torch.as_tensor(p) for p in self.prev_preds]
+            prev_preds_tensor = torch.stack(prev_preds).to(self.device)
+            ## 4D Convolution
+            batch_size, n, _ = pts.shape
+            zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+            pts = torch.cat([pts, zeros], dim=2)
+            batch_size, n, _ = prev_preds_tensor.shape
+            ones = torch.ones((batch_size, n, 1), device=pts.device)
+            prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
+            pts = torch.cat((prev_preds_tensor, pts), dim=1)
+            del self.prev_preds, prev_preds_tensor
+            self.prev_preds = []
+        else:
+            # pts = pts.repeat_interleave(2, dim=0)
+            pts = pts.view(self.batch_size, -1, 3)
+            ## 4D Convolution
+            batch_size, n, _ = pts.shape
+            zeros = torch.zeros((batch_size, n, 1), device=pts.device)
+            pts = torch.cat([pts, zeros], dim=2)
+            
+        pts = torch.nan_to_num(pts, nan=0.0)
+        sptensor = preprocess(pts) # batch x channel x D x W x H x t
+        
+        preds = self.forward(sptensor, False, iter, 0)
+        wandb_log((preds[0]), iter, "pred", "logs/pred.ply")
+            
+        return preds
+
             
             
             

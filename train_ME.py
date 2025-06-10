@@ -485,7 +485,7 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, target_key, self.is_train, iter, epoch)
+                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, self.is_train, iter, epoch, target_key)
                 # tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
@@ -614,5 +614,6 @@ def main_worker(args):
 def main():
     args = get_parser()
     main_worker(args) 
+    
 if __name__ == "__main__":
     main()
