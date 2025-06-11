@@ -293,6 +293,15 @@ class PointCloud3DCNN(nn.Module):
 
             if is_train:
                 keep += gt_keep
+
+            if (epoch + 1) % cfg.debug_epoch == 0:
+                if not bool(torch.any(keep)):
+                    raise RuntimeError(
+                        f"[DEBUG ERROR] epoch {epoch + 1}, layer {layer_idx}: "
+                        "keep mask is empty (all zeros)."
+                    )
+
+                
             # if (epoch + 1) % 5 == 0:
             #     self.alpha += 0.2
             
@@ -312,10 +321,10 @@ class PointCloud3DCNN(nn.Module):
                 
 
 
-            # if (epoch + 1) % cfg.debug_epoch == 0:
-            #     # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
-            #     # print(iter)
-            #     wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
+            if (epoch + 1) % cfg.debug_epoch == 0:
+                # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
+                # print(iter)
+                wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
 
             # Post processing
             classifications.insert(0, pred_occu.F)

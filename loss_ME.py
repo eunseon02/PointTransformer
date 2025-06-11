@@ -84,6 +84,19 @@ class NSLoss(nn.Module):
 
         return loss, check
 
+    def focal_loss_with_logits(self, logits, targets, alpha=0.25, gamma=2.0, reduction='mean'):
+        bce = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        pt = torch.exp(-bce)
+        loss = alpha * (1 - pt) ** gamma * bce
+
+        if reduction == 'mean':
+            return loss.mean()
+        elif reduction == 'sum':
+            return loss.sum()
+        else:
+            return loss
+
+
     def compute_chamfer_loss(self, preds, gts):
         loss = 0
         batch_num = len(preds)
@@ -101,20 +114,19 @@ class NSLoss(nn.Module):
 
     def forward(self, pred_occu, gt_occu, preds, gt_pts, pred_keep, keep):
         loss1, check = self.compute_occupancy_focal_loss(pred_occu, gt_occu)
-        loss2 = 0
+        loss2 = 0.0
         for depth in range(len(keep)):
             # print(pred_keep[depth].float().shape, keep[depth].float().shape)
-            keep_loss = F.binary_cross_entropy_with_logits(pred_keep[depth].float(), keep[depth].float(), reduction='mean')
+            keep_loss = self.focal_loss_with_logits(
+                    pred_keep[depth].float(),
+                    keep[depth].float(),
+                    alpha=0.25, 
+                    gamma=2.0,
+                    reduction='mean'
+                )
             loss2 += keep_loss
         loss2 /= len(keep)
-        # print(loss1, loss2)
 
-        # loss2 = self.compute_chamfer_loss(preds, gt_pts)
+        total_loss = loss1 + loss2
 
-        total_loss = loss1 + 3*loss2
-
-        # logging.info(f"loss1 {loss1}")
-        # logging.info(f"loss2 {loss2}")
-        # print("loss1", loss1)
-        # print("loss2", loss2)
         return total_loss, loss1, loss2, check

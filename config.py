@@ -37,7 +37,7 @@ class config:
     max_num_points_per_voxel = 3  
 
     # Train configurations
-    is_train = False
+    is_train = True
     batch_size = 16 if is_train else 1
     iter = 3
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

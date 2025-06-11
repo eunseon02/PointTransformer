@@ -1,8 +1,7 @@
-weight2/
-weight/
+weight*
 loss_log.txt
 model_epoch_best_129.pth
-train_/
+train_*
 valid_/
 *.ply
 *.profile

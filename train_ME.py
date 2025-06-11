@@ -445,7 +445,7 @@ class Train():
                 # tensorboard_launcher(pts[1], iter, [1.0, 0.0, 0.0], "pts", writer)
                 # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", writer)
 
-                print(f"prev_preds length: {len(prev_preds)}")
+                # print(f"prev_preds length: {len(prev_preds)}")
                 # concat
                 if len(prev_preds) > 0:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
@@ -458,8 +458,8 @@ class Train():
                     ones = torch.ones((batch_size, n, 1), device=pts.device)
                     prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
-                    print(f"pts shape after concat: {pts[0][: ,:3].shape}")
-                    wandb_log(pts[0][: ,:3], iter, f"epoch_{epoch}/pts", "logs/pts.ply")
+                    # print(f"pts shape after concat: {pts[0][: ,:3].shape}")
+                    # wandb_log(pts[0][: ,:3], iter, f"epoch_{epoch}/pts", "logs/pts.ply")
                     del prev_preds, prev_preds_tensor
                     prev_preds = []
                 else:
@@ -497,30 +497,24 @@ class Train():
                 
                 if (epoch + 1) % cfg.debug_epoch == 0:
                     global_step = epoch * 200 + iter
-                    # epoch_writer = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
-                    # epoch_writer2 = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
                     wandb_log(preds[0], global_step, f"epoch_{epoch}/pointcloud", "logs/pred.ply")
                     wandb_log(gt_pts[0], global_step, f"epoch_{epoch}/gt_pointcloud", "logs/gt_pts.ply")
                     wandb_log(occupancy_grid_to_coords(pts_occu.dense()[0]), global_step, f"epoch_{epoch}/dense-point", "logs/dense-pt.ply")
                     wandb_log(occupancy_grid_to_coords(gt_occu_.dense()[0]), global_step, f"epoch_{epoch}/dense-gtpoint", "logs/dense-gt.ply")
                     wandb_log(out, global_step, f"epoch_{epoch}/model-out", "logs/model-out.ply")
 
+                    # epoch_writer = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
+                    # epoch_writer2 = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
+
                     # tensorboard_launcher(preds[0], iter, [1.0, 0.0, 0.0], "preds", epoch_writer2)
                     # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", epoch_writer2)
                     # tensorboard_launcher(pts[0][:,  :3], iter, [0.0, 1.0, 1.0], "cat_pts", epoch_writer2)
-
 
                     # tensorboard_launcher((out), iter, [1.0, 0.0, 0.0], "Reconstrunction-iter", epoch_writer)
                     # tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), iter, [1.0, 0.0, 1.0], "point-iter", epoch_writer)
                     # tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), iter, [0.0, 0.0, 1.0], "GT-iter", epoch_writer)
                     
                     # epoch_writer.close()
-
-                # if iter == 1:
-                #     print("tensorboard_launcher")
-                #     tensorboard_launcher((out), epoch, [1.0, 0.0, 0.0], "Reconstrunction", writer)
-                #     tensorboard_launcher(occupancy_grid_to_coords(pts_occu.dense()[0]), epoch, [1.0, 0.0, 1.0], "point", writer)
-                #     tensorboard_launcher(occupancy_grid_to_coords(gt_occu_.dense()[0]), epoch, [0.0, 0.0, 1.0], "GT", writer)
 
                 loss, loss1, loss2, check = self.criterion(occu, gt_occu, preds, gt_pts, pred_keep, keep)
                 if iter == 1:
@@ -540,6 +534,7 @@ class Train():
                 #         print(f"Layer: {name} | Gradient mean: {param.grad.mean()}")
                 #     else:
                 #         print(f"Layer: {name} | No gradient calculated!")
+
                 self.optimizer.step()
                 loss_buf.append(loss.item())
                 loss1_buf.append(loss1.item())
