@@ -38,7 +38,7 @@ class config:
 
     # Train configurations
     is_train = True
-    batch_size = 16
+    batch_size = 16 if is_train else 1
     iter = 2
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = f"./train_logs{iter}"

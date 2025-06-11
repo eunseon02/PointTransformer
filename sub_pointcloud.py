@@ -50,9 +50,10 @@ class PointCloudProcessor(Node):
             self.get_logger().warn('Received empty point cloud.')
             return
 
-        xyz_array = np.asarray(points_list, dtype=np.float32)
+        xyz_array = np.array([ [x, y, z] for x, y, z in points_list ], dtype=np.float32) 
 
         xyz_tensor = torch.from_numpy(xyz_array)  # shape: (N, 3)
+        # wandb_log(xyz_tensor, )
 
         data = {
             "lidar" : xyz_tensor.unsqueeze(0)

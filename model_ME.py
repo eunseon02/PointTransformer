@@ -5,7 +5,6 @@ from spconv.pytorch.utils import PointToVoxel
 from spconv.pytorch.hash import HashTable
 import numpy as np
 from cumm import tensorview as tv
-import open3d as o3d
 from config import config as cfg
 from utils import occupancy_grid, preprocess, transform_point_cloud
 import cumm
@@ -407,6 +406,8 @@ class PointCloud3DCNN(nn.Module):
     def process_pointclouds(self, data, iter):
         pts, gt_pts, lidar_pos, lidar_quat = data.get("lidar"), data.get("gt"), data.get("delta_pose"), data.get("delta_quat")
         pts = pts.to(self.device)
+        wandb_log(pts[0], iter, "pts", "logs/pts.ply")
+
         if gt_pts is not None:
             lidar_pos = lidar_pos.to(self.device)
             lidar_quat = lidar_quat.to(self.device)
@@ -432,7 +433,6 @@ class PointCloud3DCNN(nn.Module):
                 transformed_preds_list.append(transformed_pred)
             self.prev_preds = torch.stack(transformed_preds_list)
 
-            wandb_log(pts[0], iter, [0.0, 0.0, 1.0], "pts")
 
         # concat
         if len(self.prev_preds) > 0:
