@@ -37,9 +37,9 @@ class config:
     max_num_points_per_voxel = 3  
 
     # Train configurations
-    is_train = True
-    batch_size = 16
-    iter = 2
+    is_train = False
+    batch_size = 16 if is_train else 1
+    iter = 3
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = f"./train_logs{iter}"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
@@ -48,13 +48,13 @@ class config:
     log = f'train_log{iter}.txt'
     wandb_log_dir = 'logs'
 
-    start_epoch = 70
+    start_epoch = 0
     epochs = 300
 
     # Training and testing parameters
     debug_epoch = 10 if is_train else 1  
-    occu_cutoff = 0.8 if is_train else 0.2 
-    teacher_forcing_ratio = 1.0 if is_train else 1.0 
+    occu_cutoff = 0.8 if is_train else 0.2
+    teacher_forcing_ratio = 1.0 if is_train else 0.0 
     epochs = 300 if is_train else 1
     decay_rate= 0.1 if is_train else 0.0
     teacher_forcing_ratio = max(0.0,teacher_forcing_ratio - ((start_epoch // 20) * decay_rate))  if start_epoch != 0 else teacher_forcing_ratio

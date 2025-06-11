@@ -283,13 +283,14 @@ class PointCloud3DCNN(nn.Module):
                 # wandb_log(coords[batch_idx == 0], global_step, f"epoch_{epoch}/prob_{layer_idx}", join(cfg.wandb_log_dir, f"prob_.ply"))
 
                 # epoch_writer.close()
-
+            # print(f"occu_cutoff : {cfg.occu_cutoff}, ")
             pred_keep = (pred_occu.F > cfg.occu_cutoff).squeeze(-1)
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             # mask = torch.rand_like(pred_keep) < self.alpha
             # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
             keep = pred_keep
+
             if is_train:
                 keep += gt_keep
             # if (epoch + 1) % 5 == 0:
@@ -311,10 +312,10 @@ class PointCloud3DCNN(nn.Module):
                 
 
 
-            if (epoch + 1) % cfg.debug_epoch == 0:
-                # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
-                # print(iter)
-                wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
+            # if (epoch + 1) % cfg.debug_epoch == 0:
+            #     # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
+            #     # print(iter)
+            #     wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
 
             # Post processing
             classifications.insert(0, pred_occu.F)

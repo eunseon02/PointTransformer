@@ -141,7 +141,7 @@ class Train():
         start_time = time.time()
         self.model.train()
         start_epoch = cfg.start_epoch
-
+        print( f"Start epoch: {start_epoch}, Total epochs: {self.epochs}")
         for epoch in range(start_epoch, self.epochs):            
             train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
 
@@ -445,7 +445,7 @@ class Train():
                 # tensorboard_launcher(pts[1], iter, [1.0, 0.0, 0.0], "pts", writer)
                 # tensorboard_launcher(gt_pts[0], iter, [0.0, 0.0, 1.0], "gt_pts", writer)
 
-
+                print(f"prev_preds length: {len(prev_preds)}")
                 # concat
                 if len(prev_preds) > 0:
                     prev_preds = [torch.as_tensor(p) for p in prev_preds]
@@ -458,6 +458,8 @@ class Train():
                     ones = torch.ones((batch_size, n, 1), device=pts.device)
                     prev_preds_tensor = torch.cat([prev_preds_tensor, ones], dim=2)
                     pts = torch.cat((prev_preds_tensor, pts), dim=1)
+                    print(f"pts shape after concat: {pts[0][: ,:3].shape}")
+                    wandb_log(pts[0][: ,:3], iter, f"epoch_{epoch}/pts", "logs/pts.ply")
                     del prev_preds, prev_preds_tensor
                     prev_preds = []
                 else:
