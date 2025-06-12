@@ -285,6 +285,7 @@ class PointCloud3DCNN(nn.Module):
                 # epoch_writer.close()
             # print(f"occu_cutoff : {cfg.occu_cutoff}, ")
             pred_keep = (pred_occu.F > cfg.occu_cutoff).squeeze(-1)
+
             gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             # mask = torch.rand_like(pred_keep) < self.alpha
@@ -295,7 +296,7 @@ class PointCloud3DCNN(nn.Module):
                 keep += gt_keep
 
             if (epoch + 1) % cfg.debug_epoch == 0:
-                if not bool(torch.any(keep)):
+                if not bool(torch.any(pred_keep)):
                     raise RuntimeError(
                         f"[DEBUG ERROR] epoch {epoch + 1}, layer {layer_idx}: "
                         "keep mask is empty (all zeros)."

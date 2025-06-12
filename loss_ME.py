@@ -32,11 +32,12 @@ class BinaryCrossEntropyLoss(nn.Module):
         return loss
 
 class NSLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, λ_keep=1.0, keep_ratio_thresh=0.6):
         super(NSLoss, self).__init__()
         self.use_cuda = torch.cuda.is_available()
         self.occupancy_loss = BinaryCrossEntropyLoss()
-
+        self.λ_keep = λ_keep
+        self.keep_ratio_thresh = keep_ratio_thresh
     def compute_occupancy_loss(self, pred_occu, gt_occu):
         num_depth = len(pred_occu)
         loss = 0
@@ -114,7 +115,7 @@ class NSLoss(nn.Module):
 
     def forward(self, pred_occu, gt_occu, preds, gt_pts, pred_keep, keep):
         loss1, check = self.compute_occupancy_focal_loss(pred_occu, gt_occu)
-        loss2 = 0.0
+        loss2, penalty_loss = 0.0, 0.0
         for depth in range(len(keep)):
             # print(pred_keep[depth].float().shape, keep[depth].float().shape)
             keep_loss = self.focal_loss_with_logits(
@@ -124,9 +125,16 @@ class NSLoss(nn.Module):
                     gamma=2.0,
                     reduction='mean'
                 )
-            loss2 += keep_loss
-        loss2 /= len(keep)
+            keep_penalty = torch.relu((keep[depth].sum() - pred_keep[depth].sum()) / torch.clamp(keep[depth].sum(), min=1.0))
 
-        total_loss = loss1 + loss2
+            loss2 += keep_loss
+            penalty_loss += keep_penalty
+        loss2 /= len(keep)
+        penalty_loss /= len(keep)
+
+
+
+
+        total_loss = loss1 + loss2 + self.λ_keep * penalty_loss
 
         return total_loss, loss1, loss2, check

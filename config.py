@@ -39,21 +39,21 @@ class config:
     # Train configurations
     is_train = True
     batch_size = 16 if is_train else 1
-    iter = 3
+    iter = 4
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = f"./train_logs{iter}"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
-    file = "final_dataset_16.h5"
+    file = "final_dataset_16.h5" if is_train else "sample_dataset_0.h5"
     weight = f"weight{iter}"
     log = f'train_log{iter}.txt'
     wandb_log_dir = 'logs'
 
-    start_epoch = 0
+    start_epoch =  270 if is_train else 0
     epochs = 300
 
     # Training and testing parameters
     debug_epoch = 10 if is_train else 1  
-    occu_cutoff = 0.8 if is_train else 0.2
+    occu_cutoff = 0.5 if is_train else 0.5
     teacher_forcing_ratio = 1.0 if is_train else 0.0 
     epochs = 300 if is_train else 1
     decay_rate= 0.1 if is_train else 0.0
