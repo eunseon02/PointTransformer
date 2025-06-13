@@ -39,7 +39,7 @@ class config:
     # Train configurations
     is_train = True
     batch_size = 16 if is_train else 1
-    iter = 6
+    iter = 10
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     BASE_LOGDIR = f"./train_logs{iter}"
     writer = SummaryWriter(join(BASE_LOGDIR, "occu"))
@@ -48,11 +48,11 @@ class config:
     log = f'train_log{iter}.txt'
     wandb_log_dir = 'logs'
 
-    start_epoch =  220 if is_train else 0
+    start_epoch =  0 if is_train else 0
     epochs = 300
 
     # Training and testing parameters
-    debug_epoch = 1 if is_train else 1  
+    debug_epoch = 10 if is_train else 1  
     occu_cutoff = 0.5 if is_train else 0.5
     teacher_forcing_ratio = 1.0 if is_train else 0.0 
     epochs = 300 if is_train else 1

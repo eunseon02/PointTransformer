@@ -285,6 +285,7 @@ class PointCloud3DCNN(nn.Module):
                 # wandb_log(occupancy_grid_to_coords(feat.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/pred_occu{layer_idx}", join(cfg.wandb_log_dir, f"pred_occu{layer_idx}.ply"), last=True)
                 # epoch_writer.close()
             # print(f"occu_cutoff : {cfg.occu_cutoff}, ")
+            # print(pred_occu.F)
             pred_keep = (pred_occu.F > cfg.occu_cutoff).squeeze(-1)
             # print("pred_keep : ", pred_keep)
 
@@ -307,28 +308,23 @@ class PointCloud3DCNN(nn.Module):
                 #     sampled_gt = torch.zeros_like(gt_keep.bool())
                 # keep = keep + sampled_gt
 
-            if (epoch + 1) % cfg.debug_epoch == 0:
-                if not bool(torch.any(pred_keep)):
-                    raise RuntimeError(
-                        f"[DEBUG ERROR] epoch {epoch + 1}, layer {layer_idx}: "
-                        "keep mask is empty (all zeros)."
-                    )
+            # if (epoch + 1) % 1 == 0:
+            #     if not bool(torch.any(pred_keep)):
+            #         raise RuntimeError(
+            #             f"[DEBUG ERROR] epoch {epoch + 1}, layer {layer_idx}: "
+            #             "keep mask is empty (all zeros)."
+            #         )
 
                 
-            # if (epoch + 1) % 5 == 0:
-            #     self.alpha += 0.2
-            
             if torch.any(keep) and layer_idx != 0:
                 # Prune and upsample
-                pyramid_output = dec(self.pruning(curr_feat, pred_keep)) # torch.Size([2, 12, 40, 120, 120, 1])
+                pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
                 # print("coords : ", pyramid_output.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
 
                 # Generate final feature for current level
-                final_pruned = self.pruning(curr_feat, pred_keep)
+                final_pruned = self.pruning(curr_feat, keep)
             elif torch.any(keep) and layer_idx == 0:
-                final_pruned = self.pruning(curr_feat, pred_keep)
-                wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned{layer_idx}.ply"), last=True)
-
+                final_pruned = self.pruning(curr_feat, keep)
             else:
                 print("else")
                 pyramid_output = None

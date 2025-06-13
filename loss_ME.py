@@ -114,26 +114,26 @@ class NSLoss(nn.Module):
         return loss
 
     def forward(self, preds, gt_pts, pred_keep, keep):
-        loss2, penalty_loss = 0.0, 0.0
+        total_loss, loss2, penalty_loss = 0.0, 0.0, 0.0
         for depth in range(len(keep)):
             # print(pred_keep[depth].float().shape, keep[depth].float().shape)
             keep_loss = self.focal_loss_with_logits(
-                    pred_keep[depth].unsqueeze(-1).float(),
+                    pred_keep[depth].F.squeeze().float(),
                     keep[depth].float(),
                     alpha=0.25, 
                     gamma=2.0,
                     reduction='mean'
                 )
-            keep_penalty = torch.relu((keep[depth].sum() - pred_keep[depth].sum()) / torch.clamp(keep[depth].sum(), min=1.0))
+            # keep_penalty = torch.relu((keep[depth].sum() - pred_keep[depth].sum()) / torch.clamp(keep[depth].sum(), min=1.0))
 
             loss2 += keep_loss
-            penalty_loss += keep_penalty
+            # penalty_loss += keep_penalty
         loss2 /= len(keep)
-        penalty_loss /= len(keep)
+        # penalty_loss /= len(keep)
 
 
 
 
-        total_loss = loss2 + self.λ_keep * penalty_loss
+        # total_loss = loss2 + self.λ_keep * penalty_loss
 
-        return total_loss, loss2, penalty_loss, check
+        return loss2
