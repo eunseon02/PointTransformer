@@ -48,7 +48,7 @@ class config:
     log = f'train_log{iter}.txt'
     wandb_log_dir = 'logs'
 
-    start_epoch =  270 if is_train else 0
+    start_epoch =  0 if is_train else 0
     epochs = 300
 
     # Training and testing parameters
