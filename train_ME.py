@@ -143,18 +143,20 @@ class Train():
         start_epoch = cfg.start_epoch
         print( f"Start epoch: {start_epoch}, Total epochs: {self.epochs}")
         for epoch in range(start_epoch, self.epochs):            
-            train_loss, epoch_time, loss1, loss2 = self.train_epoch(epoch)
+            train_loss, epoch_time, loss2, loss3 = self.train_epoch(epoch)
 
             # logging
             prefix = f"Debug/epoch_{epoch}"
             wandb.define_metric(f"{prefix}/*", step_metric=f"{prefix}/step")
-            writer.add_scalar("Loss/train", train_loss, epoch)
-            writer.add_scalar("Loss/prob", loss1, epoch)
-            writer.add_scalar("Loss/keep", loss2, epoch)
+            # writer.add_scalar("Loss/train", train_loss, epoch)
+            # writer.add_scalar("Loss/prob", loss1, epoch)
+            # writer.add_scalar("Loss/keep", loss2, epoch)
+            # writer.add_scalar("Loss/remain_keep", loss3, epoch)
+
             wandb.log({
                 "Loss/train": train_loss,
-                "Loss/prob":  loss1,
                 "Loss/keep":  loss2,
+                "Loss/remain_keep":  loss3,
                 "Loss/teacher_forcing_ratio": self.teacher_forcing_ratio,
                 "Loss/epoch": epoch,
             }, step=(epoch+1) * 200)
@@ -411,8 +413,8 @@ class Train():
     def train_epoch(self, epoch):
         epoch_start_time = time.time()
         loss_buf = []
-        loss1_buf = []
         loss2_buf = []
+        loss3_buf = []
 
         self.model.train()
         preds = None
@@ -487,7 +489,7 @@ class Train():
                 )
                 
                 self.optimizer.zero_grad()
-                preds, occu, gt_occu, out, pred_keep, keep = self.model(sptensor, self.is_train, iter, epoch, target_key)
+                preds, pred_keep, gt_occu, out, keep = self.model(sptensor, self.is_train, iter, epoch, target_key)
                 # tensorboard_launcher(occu[0], iter, [1.0, 0.0, 0.0], "Reconstrunction_iter", writer)
                 # tensorboard_launcher(gt_occu[0], iter, [0.0, 0.0, 1.0], "pts_iter", writer)
 
@@ -500,8 +502,8 @@ class Train():
                     wandb_log(preds[0], global_step, f"epoch_{epoch}/pointcloud", "logs/pred.ply")
                     wandb_log(gt_pts[0], global_step, f"epoch_{epoch}/gt_pointcloud", "logs/gt_pts.ply")
                     wandb_log(occupancy_grid_to_coords(pts_occu.dense()[0]), global_step, f"epoch_{epoch}/dense-point", "logs/dense-pt.ply")
-                    wandb_log(occupancy_grid_to_coords(gt_occu_.dense()[0]), global_step, f"epoch_{epoch}/dense-gtpoint", "logs/dense-gt.ply")
-                    wandb_log(out, global_step, f"epoch_{epoch}/model-out", "logs/model-out.ply")
+                    # wandb_log(occupancy_grid_to_coords(gt_occu_.dense()[0]), global_step, f"epoch_{epoch}/dense-gtpoint", "logs/dense-gt.ply")
+                    # wandb_log(out, global_step, f"epoch_{epoch}/model-out", "logs/model-out.ply")
 
                     # epoch_writer = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"occu_{epoch}"))
                     # epoch_writer2 = SummaryWriter(os.path.join(cfg.BASE_LOGDIR, f"pts_{epoch}"))
@@ -516,16 +518,11 @@ class Train():
                     
                     # epoch_writer.close()
 
-                loss, loss1, loss2, check = self.criterion(occu, gt_occu, preds, gt_pts, pred_keep, keep)
-                if iter == 1:
-                    writer.add_scalar("Loss/0", check[0], epoch)
-                    writer.add_scalar("Loss/1", check[1], epoch)
-                    writer.add_scalar("Loss/2", check[2], epoch)
-                    writer.add_scalar("Loss/3", check[3], epoch)
+                loss, loss2, loss3, check = self.criterion(preds, gt_pts, pred_keep, keep)
 
                     
-                loss1.backward()
-                self.scheduler.step(loss1)
+                loss.backward()
+                self.scheduler.step(loss)
 
 
                 # for name, param in self.model.named_parameters():
@@ -537,9 +534,9 @@ class Train():
 
                 self.optimizer.step()
                 loss_buf.append(loss.item())
-                loss1_buf.append(loss1.item())
                 loss2_buf.append(loss2.item())
-                
+                loss3_buf.append(loss3.item())
+
                 # transform
                 if preds is not None and not np.array_equal(lidar_pos, np.zeros(3, dtype=np.float32)) and not np.array_equal(lidar_quat, np.array([1, 0, 0, 0], dtype=np.float32)):
                     for i in range(min(self.batch_size, preds.size(0))):
@@ -552,7 +549,7 @@ class Train():
                         prev_preds.append(transformed_pred)
                         del transformed_pred
                 # empty memory
-                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, loss1, loss2, occu, sptensor, gt_occu, check
+                del pts, gt_pts, lidar_pos, lidar_quat, batch, preds, loss, loss3, loss2, occu, sptensor, gt_occu, check
                 torch.cuda.empty_cache()
                 pbar.set_postfix(train_loss=np.mean(loss_buf) if loss_buf else 0)
                 pbar.update(1)
@@ -561,7 +558,7 @@ class Train():
         self.train_hist['per_epoch_time'].append(epoch_time)
         self.train_hist['train_loss'].append(np.mean(loss_buf))
         # return np.mean(loss_buf), epoch_time, np.mean(cham_loss_buf), np.mean(occu_loss_buf), np.mean(cls_losses)
-        return np.mean(loss_buf), epoch_time, np.mean(loss1_buf), np.mean(loss2_buf)
+        return np.mean(loss_buf), epoch_time, np.mean(loss2_buf), np.mean(loss3_buf)
 
 
     def _snapshot(self, epoch):

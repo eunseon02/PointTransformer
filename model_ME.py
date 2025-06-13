@@ -276,24 +276,36 @@ class PointCloud3DCNN(nn.Module):
             batch_idx = coords[:, 0]
             coords = coords[:, 1:4]
 
-            # if (epoch + 1) % cfg.debug_epoch == 0:
+            if (epoch + 1) % cfg.debug_epoch == 0:
                 # epoch_writer = SummaryWriter(join(cfg.BASE_LOGDIR, f"{epoch}"))
                 # tensorboard_launcher(coords_[batch_idx_ == 0], iter, [0.0, 0, 1.0], f"target_{layer_idx}_epoch", epoch_writer)
                 # tensorboard_launcher(coords[batch_idx == 0], iter, [1.0, 0, 0], f"prob_{layer_idx}_epoch", epoch_writer)
-                # wandb_log(coords_[batch_idx_ == 0], global_step, f"epoch_{epoch}/target_{layer_idx}", join(cfg.wandb_log_dir, f"target.ply"))
-                # wandb_log(coords[batch_idx == 0], global_step, f"epoch_{epoch}/prob_{layer_idx}", join(cfg.wandb_log_dir, f"prob_.ply"))
+                wandb_log(coords_[batch_idx_ == 0], global_step, f"epoch_{epoch}/target_{layer_idx}", join(cfg.wandb_log_dir, f"target.ply"))
+                wandb_log(coords[batch_idx == 0], global_step, f"epoch_{epoch}/prob_{layer_idx}", join(cfg.wandb_log_dir, f"prob_.ply")) ## same with pred_occu.dense
+                # wandb_log(occupancy_grid_to_coords(feat.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/pred_occu{layer_idx}", join(cfg.wandb_log_dir, f"pred_occu{layer_idx}.ply"), last=True)
                 # epoch_writer.close()
             # print(f"occu_cutoff : {cfg.occu_cutoff}, ")
             pred_keep = (pred_occu.F > cfg.occu_cutoff).squeeze(-1)
+            # print("pred_keep : ", pred_keep)
 
-            gt_keep = target
             # keep = (1 - self.alpha) * gt_keep + self.alpha * pred_keep.squeeze(-1) == 1
             # mask = torch.rand_like(pred_keep) < self.alpha
             # gt_keep[mask.squeeze(-1)] = (pred_keep[mask] > 0.8).squeeze(-1)
             keep = pred_keep
 
             if is_train:
-                keep += gt_keep
+                keep = keep + gt_keep
+                # alpha = (1.0 if epoch < 220 else
+                #         0.0 if epoch >= 300 else
+                #         1.0 - (epoch - 220) / 80.0) 
+                # if alpha > 0:
+                #     mask_pos      = gt_keep.bool()         
+                #     rand_keep_pos = torch.bernoulli(
+                #         torch.full_like(mask_pos.float(), alpha)).bool()
+                #     sampled_gt    = mask_pos & rand_keep_pos    
+                # else:
+                #     sampled_gt = torch.zeros_like(gt_keep.bool())
+                # keep = keep + sampled_gt
 
             if (epoch + 1) % cfg.debug_epoch == 0:
                 if not bool(torch.any(pred_keep)):
@@ -306,15 +318,17 @@ class PointCloud3DCNN(nn.Module):
             # if (epoch + 1) % 5 == 0:
             #     self.alpha += 0.2
             
-            if torch.any(keep) and layer_idx is not 0:
+            if torch.any(keep) and layer_idx != 0:
                 # Prune and upsample
-                pyramid_output = dec(self.pruning(curr_feat, keep)) # torch.Size([2, 12, 40, 120, 120, 1])
+                pyramid_output = dec(self.pruning(curr_feat, pred_keep)) # torch.Size([2, 12, 40, 120, 120, 1])
                 # print("coords : ", pyramid_output.dense(min_coordinate=torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0].shape)
 
                 # Generate final feature for current level
-                final_pruned = self.pruning(curr_feat, keep)
-            elif torch.any(keep) and layer_idx is 0:
-                final_pruned = self.pruning(curr_feat, keep)
+                final_pruned = self.pruning(curr_feat, pred_keep)
+            elif torch.any(keep) and layer_idx == 0:
+                final_pruned = self.pruning(curr_feat, pred_keep)
+                wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned{layer_idx}.ply"), last=True)
+
             else:
                 print("else")
                 pyramid_output = None
@@ -322,13 +336,13 @@ class PointCloud3DCNN(nn.Module):
                 
 
 
-            if (epoch + 1) % cfg.debug_epoch == 0:
-                # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
-                # print(iter)
-                wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
+            # if (epoch + 1) % cfg.debug_epoch == 0:
+            #     # tensorboard_launcher(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), iter, [1.0, 0, 0], f"final_pruned{layer_idx}")
+            #     # print(iter)
+            #     wandb_log(occupancy_grid_to_coords(final_pruned.dense(min_coordinate = torch.tensor([0, 0, 0, 0], dtype=torch.int32))[0][:, :, :, :, :, 0]), global_step, f"epoch_{epoch}/final_pruned_{layer_idx}", join(cfg.wandb_log_dir, f"final_pruned_{layer_idx}.ply"), last=True)
 
             # Post processing
-            classifications.insert(0, pred_occu.F)
+            classifications.insert(0, pred_occu)
             outputs.insert(0, final_pruned)
             pred_keep_buf.insert(0, pred_keep)
             if target_key is not None:
@@ -341,7 +355,7 @@ class PointCloud3DCNN(nn.Module):
         if target_key is None: 
             return preds
         else:
-            return preds, classifications, targets, batch_coords[0][:, :3], pred_keep_buf, keep_buf
+            return preds, classifications, targets, batch_coords[0][:, :3], keep_buf
     
     
     def postprocess(self, preds):

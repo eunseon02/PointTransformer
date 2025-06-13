@@ -113,13 +113,12 @@ class NSLoss(nn.Module):
         loss /= batch_num
         return loss
 
-    def forward(self, pred_occu, gt_occu, preds, gt_pts, pred_keep, keep):
-        loss1, check = self.compute_occupancy_focal_loss(pred_occu, gt_occu)
+    def forward(self, preds, gt_pts, pred_keep, keep):
         loss2, penalty_loss = 0.0, 0.0
         for depth in range(len(keep)):
             # print(pred_keep[depth].float().shape, keep[depth].float().shape)
             keep_loss = self.focal_loss_with_logits(
-                    pred_keep[depth].float(),
+                    pred_keep[depth].unsqueeze(-1).float(),
                     keep[depth].float(),
                     alpha=0.25, 
                     gamma=2.0,
@@ -135,6 +134,6 @@ class NSLoss(nn.Module):
 
 
 
-        total_loss = loss1 + loss2 + self.λ_keep * penalty_loss
+        total_loss = loss2 + self.λ_keep * penalty_loss
 
-        return total_loss, loss1, loss2, check
+        return total_loss, loss2, penalty_loss, check
